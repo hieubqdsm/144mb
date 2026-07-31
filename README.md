@@ -1,48 +1,79 @@
-# 144mb — ASCII Tabletop RPG Engine (1.44MB Jam)
+# 144mb — ASCII Dungeon Crawler RPG (1.44MB Jam)
 
-Game engine + demo cho thử thách "nhét game vào 1 đĩa mềm 1.44MB".
-Hướng: **ASCII roguelike RPG** (D&D-lite) bằng C + Win32 Console API.
+ASCII roguelike RPG (D&D-lite) bằng C + Win32 Console API. Fit ~11% giới hạn 1.44MB.
 
-## Tech stack
-- **C thuần** + MSVC 14.51 (Visual Studio 2026), build static `/MT`.
-- **Win32 Console API** (`WriteConsoleOutput`) — render ASCII + 16 màu + CP437 glyphs.
-- **0 dependency ngoài** (không Raylib/SDL/GPU) → chạy mọi Windows, không bug driver.
+## Build & run
+```bash
+build_rpg.bat    # → build/rpg.exe (~167KB)
+```
+Double-click `build\rpg.exe` để chơi.
+
+## Controls
+- **WASD/arrows** — di chuyển / tấn công (bump vào enemy)
+- **1** — Fire Bolt (cantrip, 1d10 fire)
+- **2** — Magic Missile (1st-level, 3d4+3 auto-hit)
+- **H** — dùng Healing Potion
+- **I** — toggle inventory panel
+- **>** (trên cầu thang) — xuống tầng
+- **R** — restart (khi chết)
+- **ESC** — menu / quit
 
 ## Cấu trúc
 ```
 src_console/
-├─ engine/
-│  ├─ console.h        # API declarations (BLT-style minimal)
-│  └─ console.c        # Win32 Console implementation (1 bản duy nhất)
-├─ main.c              # Demo shooter (Floppy Defender)
-└─ dd_demo.c           # Demo D&D (character creation + dungeon)
+├─ engine/                 # ENGINE (game-agnostic)
+│  ├─ console.{h,c}        # Win32 Console API renderer (BLT-style)
+│  ├─ rng.{h,c}            # Xorshift64 deterministic RNG
+│  ├─ map.{h,c}            # Tile grid + walkable/transparent/seen/visible
+│  ├─ fov.{h,c}            # Recursive shadowcasting (8 octants)
+│  ├─ path.{h,c}           # A* pathfinding (binary heap)
+│  └─ bsp.{h,c}            # Dungeon generation (rooms + corridors)
+├─ game/                   # GAME (D&D-lite)
+│  ├─ actor.{h,c}          # Type/Instance split (NetHack permonst/monst)
+│  ├─ d20.{h,c}            # d20 rolls + advantage/disadvantage + crit
+│  ├─ combat.{h,c}         # Attack resolution (to-hit vs AC, damage)
+│  ├─ turn.{h,c}           # Initiative + round-robin turn order
+│  ├─ conditions.{h,c}     # Timed effects (DOT, buffs, save-ends)
+│  ├─ items.{h,c}          # Item type definitions
+│  ├─ inventory.{h,c}      # Backpack + equip slots + use items
+│  ├─ ai.{h,c}             # Monster AI (melee chaser)
+│  ├─ spells.h + spell_resolve.c   # Spell definitions + cast resolve
+│  ├─ dungeon.{h,c}        # Multi-floor procedural dungeon
+│  ├─ ui.{h,c}             # Sidebar, HP bar, combat log, inventory panel
+│  └─ rpg_main.c           # Main game loop (menu→class→dungeon→combat)
+├─ data/                   # NetHack-style compiled const tables
+│  ├─ monsters.{h,c}       # Goblin, Hero (stats, actions, dice)
+│  ├─ items.c              # Longsword, Chain Shirt, Potion, Dagger
+│  └─ spells.c             # Fire Bolt, Magic Missile, Fireball, Mage Armor, Cure Wounds
+├─ structs.h               # Shared structs (DiceFormula, MonsterType, Actor, Battle)
+└─ enums.h                 # Ability, DamageType, Condition, Team, SaveType, RollMode
 
-pewball_demo/          # Reference: PEWBALL (FloppyJam 2018 winner) build để học
-build_console.bat      # Build shooter
-build_dd.bat           # Build D&D demo
+pewball_demo/              # Reference: PEWBALL (FloppyJam 2018)
+build_rpg.bat              # Build script
 ```
 
-## Build
-```bash
-build_console.bat    # → build/game.exe  (~168KB)
-build_dd.bat         # → build/dd.exe     (~150KB)
-```
-Cả 2 đều fit dư dật dưới 1.44MB (dùng ~11% giới hạn).
+## Kiến trúc
+- **Engine/Game separation** (libtcod): engine không chứa game logic.
+- **Type/Instance split** (NetHack): `MonsterType` (const shared) → `Actor` (instance). 50 goblin = 1 def + 50 tiny instances.
+- **Data-driven compiled tables** (NetHack): monster/item/spell = `const` arrays, 0 parser, 0 runtime cost.
+- **Command pattern combat** (Natural_20): attack resolve = dice → AC check → damage/crit.
+- **Minimal console API** (BearLibTerminal): ~20 render functions trên `WriteConsoleOutput`.
 
-## Engine API (console.h)
-- **Render**: `ce_put/ce_fill/ce_line/ce_circle/ce_sphere/ce_sprite/ce_sprite_multi/ce_text/ce_text_w/ce_border`
-- **Input**: `ce_keyDown/ce_keyPressed/ce_mouseClicked/ce_clickedBox/ce_hoverBox`
-- **Loop**: `ce_run(update_fn)` — callback-based, hybrid sleep + timeBeginPeriod(1)
+## Tính năng D&D-lite đã có
+- ✅ d20 resolution: attack rolls, advantage/disadvantage, crit (nat 20), fumble (nat 1)
+- ✅ 6 ability scores (STR/DEX/CON/INT/WIS/CHA) + modifiers
+- ✅ AC, HP, damage types (slashing/piercing/fire/force...)
+- ✅ Turn-based combat with initiative
+- ✅ 5 spells (4 kinds: atk-ranged, magic-missile, save-half, buff-AC, heal)
+- ✅ Inventory + equip (weapon/armor) + potions
+- ✅ Timed effects (DOT poison, AC buffs, save-ends)
+- ✅ FOV fog of war (recursive shadowcasting)
+- ✅ Multi-floor procedural dungeon (BSP rooms + corridors + stairs)
+- ✅ Monster AI (melee chaser)
+- ✅ Combat log + HP bars + sidebar
 
 ## Tiến độ
-- [x] Phase 1: Raylib pipeline (bỏ — bug hiển thị GPU)
-- [x] Phase 2: Console engine (hoạt động 100%, render verified)
-- [x] Phase A: Refactor engine tách module (console.h + console.c)
-- [ ] Phase B: engine layer (rng, map, fov, path, bsp) + game systems (actor, d20, combat)
-- [ ] Phase C: content (monsters/items/spells data tables, inventory, dialogue)
-- [ ] Phase D: REXpaint sprite loader + polish
-
-## Kiến trúc tham khảo
-- **NetHack**: data-driven compiled tables + type/instance split
-- **Libtcod**: module structure + engine/game separation
-- **BearLibTerminal**: minimal console API
+- [x] Phase A: Engine refactor tách module
+- [x] Phase B: engine layer (rng/map/fov/path/bsp)
+- [x] Phase C: game systems (actor/d20/combat/turn/items/inventory/spells/dungeon/ui)
+- [ ] Phase D: REXpaint sprite loader + polish + sprite art
