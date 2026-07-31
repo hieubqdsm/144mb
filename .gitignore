@@ -1,0 +1,34 @@
+# Build output
+build/
+*.obj
+*.exe
+*.pdb
+*.ilk
+
+# Logs / debug files
+*.log
+debug.log
+ce_debug.log
+ce_loop.log
+ce_profile.csv
+dump*.txt
+frame_dump.txt
+loop_test.log
+screen_info.log
+stdout*.log
+
+# Game runtime files
+hiscore.dat
+error.txt
+
+# Raylib source/build (chi commit .lib va headers)
+lib/raylib_src/
+lib/raylib_build/
+lib/raylib_build_gl21/
+
+# Tools (UPX exe - tai lai de)
+tools/*.exe
+
+# Temp
+*.tmp
+*.bat.tmp
