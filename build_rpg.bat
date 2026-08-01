@@ -14,6 +14,9 @@ cl /nologo /MT /O2 /utf-8 /Fe:%OUTDIR%\rpg.exe ^
    src_console\engine\fov.c ^
    src_console\engine\path.c ^
    src_console\engine\bsp.c ^
+   src_console\engine\inflate.c ^
+   src_console\engine\xp_loader.c ^
+   src_console\engine\xp_render.c ^
    src_console\game\actor.c ^
    src_console\game\d20.c ^
    src_console\game\combat.c ^
