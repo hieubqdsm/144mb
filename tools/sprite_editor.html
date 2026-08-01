@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Sprite Editor - .xp (REXpaint) cho 144mb RPG</title>
+<!--
+================================================================================
+  SPRITE EDITOR - Tool sinh sprite .xp cho game ASCII RPG (144mb).
+  Self-contained HTML/JS. Mở = Chrome/Edge. Không cần build, không cần server.
+================================================================================
+
+  ╔═══════════════════════════════════════════════════════════════════════════╗
+  ║  HƯỚNG DẪN CHO AI (Claude/GPT/Cursor...) ĐỌC FILE NÀY                      ║
+  ╚═══════════════════════════════════════════════════════════════════════════╝
+
+  Tool này vẽ sprite dạng cell-grid (mỗi ô = 1 ký tự + màu fg + màu bg),
+  xuất ra file .xp (format REXpaint) để nạp vào engine C.
+
+  ─── CÁCH AI GENERATE SPRITE ──────────────────────────────────────────────
+  Mở file này bằng browser. Scroll xuống dưới tới khung "AI CONSOLE"
+  (textarea). Dán code JS gọi API `editor.*` rồi bấm [Run JS].
+
+  API đầy đủ (xem implementation ở cuối file):
+    editor.clear()                              // xóa canvas
+    editor.setSize(w, h)                        // đổi kích cỡ (vd 3x3, 5x5)
+    editor.setCell(x, y, charOrCp, fg, bg)      // đặt 1 ô. char string HOẶC codepoint int
+    editor.setGrid([[{c:'#',fg:7,bg:0}, ...]])  // đặt cả grid 2D (row-major: [y][x])
+    editor.fillRect(x0,y0,x1,y1, char, fg, bg)  // fill hình chữ nhật
+    editor.fillGlyph(charOrCp, fg, bg)          // fill toàn bộ canvas
+    editor.getGrid()                            // đọc grid hiện tại
+    editor.getJS()                              // sinh JS code tái tạo grid
+    editor.getC()                               // sinh C array (embed vào game)
+    editor.exportXp("ten_file.xp")              // trigger download .xp
+    editor.loadXp(arrayBuffer)                  // load .xp từ ArrayBuffer
+
+  ─── QUY ƯỚC ─────────────────────────────────────────────────────────────
+  • Màu: 0-15 (CGA 16 màu, xem bảng dưới). -1 hoặc bỏ qua bg = transparent.
+  • char: hoặc string 1 ký tự ('#', '@', '█'), hoặc codepoint int (0x2588).
+  • Transparent = bg magenta RGB(255,0,255). Engine sẽ skip ô này khi render.
+  • Cell rỗng (cp=0) cũng = transparent.
+
+  ╔═══════════════════════════════════════════════════════════════════════════╗
+  ║  BẢNG MÀU CGA 16 (match gdi_renderer.c CE_RGB)                             ║
+  ║  Dùng fg/bg = index 0-15 trong editor.setCell(..., fg, bg)                 ║
+  ╚═══════════════════════════════════════════════════════════════════════════╝
+   0  Đen (Black)         #000000    8  Xám tối (DarkGrey)   #545454
+   1  Xanh dương (DkBlue) #0000A8    9  Xanh dương sáng      #5454FC
+   2  Xanh lá (DkGreen)   #00A800    10 Xanh lá sáng         #54FC54
+   3  Cyan (DkCyan)       #00A8A8    11 Cyan sáng            #54FCFC
+   4  Đỏ (DkRed)          #A80000    12 Đỏ sáng              #FC5454
+   5  Magenta (DkMag)     #A800A8    13 Magenta sáng         #FC54FC
+   6  Nâu (Brown)         #A85400    14 Vàng                 #FCFC54
+   7  Xám (Grey)          #A8A8A8    15 Trắng                #FCFCFC
+
+  ╔═══════════════════════════════════════════════════════════════════════════╗
+  ║  CHARSET THƯỜNG DÙNG (codepoint hex)                                       ║
+  ╚═══════════════════════════════════════════════════════════════════════════╝
+  Block elements (đổ bóng/tô đặc):
+    █ U+2588  ▓ U+2593  ▒ U+2592  ░ U+2591   (full → light shade)
+    ▀ U+2580  ▄ U+2584  ▌ U+258C  ▐ U+2590   (half blocks)
+    ▔ U+2594  ▁ U+2581                      (light up/down)
+  Box drawing (khung/viết tường):
+    ─ U+2500  │ U+2502  ┌ U+250C  ┐ U+2510  └ U+2514  ┘ U+2518
+    ═ U+2550  ║ U+2551  ╔ U+2554  ╗ U+2557  ╚ U+255A  ╝ U+255D
+    ┼ U+253C  ┴ U+2534  ┬ U+252C  ┤ U+2524  ├ U+251C
+  ASCII printable: 0x20 (space) đến 0x7E (~). Vd @, g, #, !, /, *, +, .
+
+  ╔═══════════════════════════════════════════════════════════════════════════╗
+  ║  SPEC FILE .XP (REXpaint) - KHỚI VỚI src_console/engine/xp_loader.c        ║
+  ╚═══════════════════════════════════════════════════════════════════════════╝
+  File = gzip(DEFLATE) của:
+    version:     int32 LE  (giá trị 3, REXpaint version 3)
+    layer_count: int32 LE  (tool này luôn = 1)
+    per layer (lặp layer_count lần):
+      width:     int32 LE
+      height:    int32 LE
+      cells:     COLUMN-MAJOR (x lặp ngoài, y lặp trong) - QUAN TRỌNG!
+        mỗi cell 10 byte:
+          codepoint: int32 LE  (0 = empty)
+          fg_red:    uint8
+          fg_green:  uint8
+          fg_blue:   uint8
+          bg_red:    uint8     (255,0,255 = transparent)
+          bg_green:  uint8
+          bg_blue:   uint8
+
+  ╔═══════════════════════════════════════════════════════════════════════════╗
+  ║  DANH SÁCH SPRITE CẦN VẼ (ưu tiên P1 → P5)                                 ║
+  ╚═══════════════════════════════════════════════════════════════════════════╝
+  P1 - Tiles (5 file, nền map, ưu tiên cao nhất):
+    floor.xp (1x1 hoặc 3x3) - nền đá xám, vân đá nhẹ
+    wall.xp  (1x1 hoặc 3x3) - tường đá, có bóng
+    door_open.xp (1x1)      - cửa mở
+    door_closed.xp (1x1)    - cửa đóng
+    stairs_down.xp (1x1)    - cầu thang xuống
+  P2 - Monsters (8 file):
+    goblin.xp, hero.xp, skeleton.xp, wolf.xp, orc.xp, zombie.xp (3x3)
+    ogre.xp (3x3 hoặc 5x5), dragon.xp (5x5 - boss)
+  P3 - Items (4 file): longsword/chainshirt/heal_potion/dagger (2x2)
+  P4 - Spells (7 file): fire_bolt/magic_missile/mage_armor/cure/poison/hold (3x3),
+                        fireball (5x5)
+  P5 - UI: title_logo (~46x7), death_screen, cursor_target (3x3)
+
+================================================================================
+-->
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a1a; color: #e0e0e0;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 14px; padding: 12px; min-width: 1100px;
+  }
+  h1 { font-size: 18px; margin-bottom: 8px; color: #54FCFC; }
+  .toolbar {
+    background: #2a2a2a; padding: 8px; border: 1px solid #444;
+    margin-bottom: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  }
+  button {
+    background: #3a3a3a; color: #e0e0e0; border: 1px solid #555;
+    padding: 5px 12px; cursor: pointer; font-family: inherit; font-size: 13px;
+  }
+  button:hover { background: #4a5a8a; }
+  button.primary { background: #2a5a2a; }
+  button.primary:hover { background: #3a7a3a; }
+  button.danger { background: #5a2a2a; }
+  label { color: #aaa; font-size: 12px; }
+  input[type=number] {
+    width: 50px; background: #1a1a1a; color: #e0e0e0;
+    border: 1px solid #555; padding: 3px; font-family: inherit;
+  }
+  select {
+    background: #1a1a1a; color: #e0e0e0; border: 1px solid #555;
+    padding: 4px; font-family: inherit; font-size: 13px;
+  }
+  .main {
+    display: grid; grid-template-columns: 180px 1fr 200px;
+    gap: 8px; margin-bottom: 8px;
+  }
+  .panel {
+    background: #2a2a2a; border: 1px solid #444; padding: 8px;
+  }
+  .panel h3 {
+    font-size: 12px; color: #FCFC54; margin-bottom: 6px;
+    text-transform: uppercase; letter-spacing: 1px;
+  }
+  #palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+  .swatch {
+    width: 100%; aspect-ratio: 1; cursor: pointer; border: 2px solid transparent;
+    font-size: 10px; display: flex; align-items: center; justify-content: center;
+    color: #fff; text-shadow: 0 0 3px #000;
+  }
+  .swatch.sel { border-color: #FCFC54; }
+  .swatch.target { box-shadow: 0 0 0 2px #54FCFC inset; }
+  .current-display {
+    margin-top: 8px; padding: 6px; background: #1a1a1a; text-align: center;
+    border: 1px solid #555;
+  }
+  .current-cell {
+    display: inline-block; width: 32px; height: 32px; line-height: 32px;
+    font-size: 20px; vertical-align: middle;
+  }
+  .canvas-wrap {
+    display: flex; align-items: flex-start; justify-content: center;
+    background: #0a0a0a; padding: 12px; min-height: 400px;
+    border: 1px solid #444;
+  }
+  #editorCanvas { cursor: crosshair; image-rendering: pixelated; }
+  #glyphBank {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px;
+    max-height: 320px; overflow-y: auto;
+  }
+  .glyph-cell {
+    width: 100%; aspect-ratio: 1; background: #1a1a1a; color: #e0e0e0;
+    border: 1px solid #333; cursor: pointer; font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .glyph-cell:hover { background: #3a3a3a; }
+  .glyph-cell.sel { background: #4a5a8a; border-color: #FCFC54; }
+  .console-section {
+    background: #2a2a2a; border: 1px solid #444; padding: 8px; margin-bottom: 8px;
+  }
+  .console-section h3 { color: #FCFC54; margin-bottom: 6px; font-size: 13px; }
+  #aiConsole {
+    width: 100%; height: 120px; background: #0a0a0a; color: #54FC54;
+    border: 1px solid #555; padding: 6px; font-family: inherit;
+    font-size: 12px; resize: vertical;
+  }
+  .console-btns { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+  #status {
+    background: #1a1a1a; padding: 6px 10px; color: #aaa;
+    font-size: 12px; border: 1px solid #444;
+  }
+  .hint { color: #888; font-size: 11px; margin-top: 4px; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; color: #54FCFC; font-size: 12px; }
+  details pre {
+    background: #0a0a0a; padding: 8px; margin-top: 6px; font-size: 11px;
+    color: #aaa; overflow-x: auto; white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<h1>🎨 Sprite Editor — .xp (REXpaint) cho 144mb RPG</h1>
+
+<div class="toolbar">
+  <button class="primary" onclick="newSprite()">🆕 New</button>
+  <button onclick="document.getElementById('fileInput').click()">📁 Import .xp</button>
+  <input type="file" id="fileInput" accept=".xp" style="display:none" onchange="onImportFile(event)">
+  <button class="primary" onclick="exportXp()">💾 Export .xp</button>
+  <button onclick="copyToClipboard(editor.getC(), 'C array copied')">📋 Copy as C</button>
+  <button onclick="copyToClipboard(editor.getJS(), 'JS code copied')">📋 Copy as JS</button>
+  <span style="flex:1"></span>
+  <label>W: <input type="number" id="sizeW" value="3" min="1" max="64"></label>
+  <label>H: <input type="number" id="sizeH" value="3" min="1" max="64"></label>
+  <button onclick="applySize()">Apply Size</button>
+  <label>Preset:</label>
+  <select id="presetSel" onchange="applyPreset()">
+    <option value="">— custom —</option>
+    <optgroup label="Tiles (P1)">
+      <option value="tile1">Tile 1×1</option>
+      <option value="tile3">Tile 3×3</option>
+    </optgroup>
+    <optgroup label="Monsters (P2)">
+      <option value="mon3">Monster 3×3</option>
+      <option value="mon5">Monster 5×5 (Ogre/Dragon)</option>
+    </optgroup>
+    <optgroup label="Items (P3)">
+      <option value="item2">Item 2×2</option>
+    </optgroup>
+    <optgroup label="Spells (P4)">
+      <option value="spell3">Spell 3×3</option>
+      <option value="spell5">Spell 5×5 (Fireball)</option>
+    </optgroup>
+    <optgroup label="UI (P5)">
+      <option value="ui7x1">Title logo 46×7</option>
+    </optgroup>
+  </select>
+</div>
+
+<div class="main">
+  <!-- LEFT: PALETTE -->
+  <div class="panel">
+    <h3>🎨 Palette (CGA 16)</h3>
+    <div id="palette"></div>
+    <div style="margin-top: 8px;">
+      <label>Target:
+        <select id="targetSel" onchange="onTargetChange()">
+          <option value="fg">Foreground</option>
+          <option value="bg">Background</option>
+        </select>
+      </label>
+    </div>
+    <div class="current-display">
+      <div style="font-size:11px;color:#aaa;margin-bottom:4px;">CURRENT</div>
+      <div id="currentPreview" class="current-cell">█</div>
+      <div style="font-size:11px;margin-top:4px;">
+        FG: <span id="fgLabel">15</span> · BG: <span id="bgLabel">T</span>
+      </div>
+    </div>
+    <button class="danger" style="width:100%;margin-top:6px;" onclick="setBgTransparent()">Set BG = Transparent</button>
+    <div class="hint">Click color = set FG/BG.<br>Right-click canvas = erase.</div>
+  </div>
+
+  <!-- CENTER: CANVAS -->
+  <div class="canvas-wrap">
+    <canvas id="editorCanvas" width="600" height="600"></canvas>
+  </div>
+
+  <!-- RIGHT: GLYPHS -->
+  <div class="panel">
+    <h3>🔤 Glyphs</h3>
+    <input type="text" id="customGlyph" placeholder="char hoặc \\u2588" maxlength="2"
+           style="width:100%;background:#1a1a1a;color:#e0e0e0;border:1px solid #555;padding:3px;font-family:inherit;" onchange="onCustomGlyph()">
+    <div id="glyphBank" style="margin-top:6px;"></div>
+  </div>
+</div>
+
+<!-- AI CONSOLE -->
+<div class="console-section">
+  <h3>🤖 AI CONSOLE — Dán JS gọi editor.* rồi [Run JS]</h3>
+  <textarea id="aiConsole" placeholder="// Ví dụ: vẽ goblin 3x3&#10;editor.setSize(3,3);&#10;editor.setGrid([&#10;  [{c:'░',fg:1}, {c:'g',fg:12}, {c:'░',fg:1}],&#10;  [{c:'█',fg:2}, {c:'█',fg:2}, {c:'█',fg:2}],&#10;  [{}, {c:'.',fg:8}, {}]&#10;]);&#10;// Bất kỳ cell nào thiếu c/fg/bg = transparent"></textarea>
+  <div class="console-btns">
+    <button class="primary" onclick="runConsole()">▶ Run JS</button>
+    <button onclick="loadExample()">📋 Load Example</button>
+    <button onclick="document.getElementById('aiConsole').value=editor.getJS()">📋 Load Current as JS</button>
+    <span class="hint" style="margin-left:auto;color:#888;">API: editor.setSize/setCell/setGrid/fillRect/getGrid/getJS/getC/exportXp</span>
+  </div>
+  <details>
+    <summary>📖 Đầy đủ API reference + ví dụ</summary>
+    <pre>// === EDITOR API (gọi qua window.editor) ===
+editor.clear()                              // xóa toàn bộ canvas (cells = empty)
+editor.getSize()                            // trả {w, h}
+editor.setSize(w, h)                        // đổi kích cỡ (giữ data nếu có thể)
+editor.setCell(x, y, charOrCp, fg, bg)      // đặt 1 ô
+  // charOrCp: string 1 ký tự ('#') HOẶC int codepoint (0x2588)
+  // fg:       0-15 (CGA). Bỏ qua = 15 (trắng)
+  // bg:       0-15, -1, hoặc bỏ qua = transparent
+editor.setGrid(rows)                        // đặt cả grid. rows = [[cell,...],...] row-major
+  // mỗi cell: {} = transparent, hoặc {c:'█',fg:7,bg:0}
+  // c: char string hoặc codepoint int. fg mặc định 15, bg mặc định transparent
+editor.fillRect(x0,y0,x1,y1, char,fg,bg)    // fill hình chữ nhật
+editor.fillGlyph(charOrCp, fg, bg)          // fill toàn bộ canvas cùng 1 cell
+editor.getGrid()                            // trả rows array (deep copy)
+editor.getJS()                              // trả string JS code tái tạo grid hiện tại
+editor.getC([name])                         // trả string C array (mặc định name="SPRITE")
+editor.exportXp([filename])                 // trigger download file .xp
+editor.loadXp(arrayBuffer)                  // load .xp từ ArrayBuffer (async)
+
+// === VÍ DỤ 1: bức tường đá 3x3 ===
+editor.setSize(3,3);
+editor.setGrid([
+  [{c:'▓',fg:8}, {c:'▓',fg:7}, {c:'░',fg:8}],
+  [{c:'▓',fg:7}, {c:'▒',fg:7}, {c:'▓',fg:8}],
+  [{c:'░',fg:8}, {c:'▓',fg:8}, {c:'▓',fg:7}]
+]);
+
+// === VÍ DỤ 2: potion 2x2 ===
+editor.setSize(2,2);
+editor.setGrid([
+  [{c:'╔',fg:7}, {c:'╗',fg:7}],
+  [{c:'║',fg:4,bg:4}, {c:'║',fg:4,bg:4}]
+]);
+
+// === VÍ DỤ 3: dùng codepoint trực tiếp ===
+editor.setCell(0, 0, 0x2588, 12, 0);   // █ đỏ trên nền đen</pre>
+  </details>
+</div>
+
+<div id="status">Sẵn sàng. 3×3 grid. Click palette → chọn màu. Click glyph → chọn ký tự. Click canvas = vẽ.</div>
+
+<script>
+"use strict";
+// ============================================================================
+// SPRITE EDITOR - Core logic
+// ============================================================================
+
+// --- CGA 16-color palette (match gdi_renderer.c CE_RGB) ---
+// hex order: RRGGBB. Index = CGA color 0-15.
+const CGA = [
+  { name:'Đen',         hex:'#000000', r:0,   g:0,   b:0   }, // 0
+  { name:'X.dương',     hex:'#0000A8', r:0,   g:0,   b:168 }, // 1
+  { name:'X.lá',        hex:'#00A800', r:0,   g:168, b:0   }, // 2
+  { name:'Cyan',        hex:'#00A8A8', r:0,   g:168, b:168 }, // 3
+  { name:'Đỏ',          hex:'#A80000', r:168, g:0,   b:0   }, // 4
+  { name:'Magenta',     hex:'#A800A8', r:168, g:0,   b:168 }, // 5
+  { name:'Nâu',         hex:'#A85400', r:168, g:84,  b:0   }, // 6
+  { name:'Xám',         hex:'#A8A8A8', r:168, g:168, b:168 }, // 7
+  { name:'Xám tối',     hex:'#545454', r:84,  g:84,  b:84  }, // 8
+  { name:'X.dương sáng',hex:'#5454FC', r:84,  g:84,  b:252 }, // 9
+  { name:'X.lá sáng',   hex:'#54FC54', r:84,  g:252, b:84  }, // 10
+  { name:'Cyan sáng',   hex:'#54FCFC', r:84,  g:252, b:252 }, // 11
+  { name:'Đỏ sáng',     hex:'#FC5454', r:252, g:84,  b:84  }, // 12
+  { name:'Mag sáng',    hex:'#FC54FC', r:252, g:84,  b:252 }, // 13
+  { name:'Vàng',        hex:'#FCFC54', r:252, g:252, b:84  }, // 14
+  { name:'Trắng',       hex:'#FCFCFC', r:252, g:252, b:252 }, // 15
+];
+const TRANSPARENT_RGB = [255, 0, 255]; // magenta = transparent (REXpaint quy ước)
+
+// --- Glyph bank ---
+const GLYPHS = [
+  // Block elements
+  '█','▓','▒','░','▀','▄','▌','▐','▔','▁','▂','▃','▆','▇','▉','▊',
+  // Box drawing
+  '─','│','┌','┐','└','┘','├','┤','┬','┴','┼',
+  '═','║','╔','╗','╚','╝','╠','╣','╦','╩','╬',
+  // Punctuation/symbols
+  ' ','.','·',':',';','+','*','#','@','!','?','/','\\','|','-','=','~','^','&','%','$',
+  // Letters thường hay dùng cho monster
+  'g','s','w','o','D','O','z','@','d','k','r','b','h','n','t',
+  // Numbers
+  '0','1','2','3','4','5','6','7','8','9',
+];
+
+// --- Editor state ---
+let state = {
+  w: 3, h: 3,
+  cells: [],          // row-major [y*w+x] = {cp:int, fg:int, bg:int (-1=transparent)}
+  curGlyph: 0x2588,   // current glyph codepoint (default full block)
+  curFg: 15,          // foreground color index
+  curBg: -1,          // background color index (-1 = transparent)
+  target: 'fg',       // palette click target: 'fg' or 'bg'
+  cellPx: 32,         // pixel size per cell on canvas
+  showGrid: true,
+  painting: false,    // mouse down?
+  paintMode: 'paint', // 'paint' or 'erase'
+};
+
+// ============================================================================
+// INIT
+// ============================================================================
+function init(){
+  resetCells(state.w, state.h);
+  buildPalette();
+  buildGlyphBank();
+  resizeCanvas();
+  render();
+  setStatus('Sẵn sàng. 3×3 grid. Click palette chọn màu, click glyph chọn ký tự, click canvas = vẽ.');
+}
+
+function resetCells(w, h){
+  state.w = w; state.h = h;
+  state.cells = new Array(w * h);
+  for(let i = 0; i < w * h; i++){
+    state.cells[i] = { cp: 0, fg: 15, bg: -1 };   // empty
+  }
+}
+
+// ============================================================================
+// PALETTE UI
+// ============================================================================
+function buildPalette(){
+  const el = document.getElementById('palette');
+  el.innerHTML = '';
+  for(let i = 0; i < 16; i++){
+    const sw = document.createElement('div');
+    sw.className = 'swatch';
+    sw.style.background = CGA[i].hex;
+    sw.textContent = i;
+    sw.title = CGA[i].name + ' (' + i + ')';
+    sw.onclick = () => onPaletteClick(i);
+    sw.oncontextmenu = (e) => { e.preventDefault(); onPaletteClick(i, true); };
+    el.appendChild(sw);
+  }
+  updatePaletteSelection();
+}
+function onPaletteClick(idx, isBg){
+  const target = isBg ? 'bg' : state.target;
+  if(target === 'fg') state.curFg = idx;
+  else state.curBg = idx;
+  updatePaletteSelection();
+  updateCurrentDisplay();
+  render();
+}
+function onTargetChange(){
+  state.target = document.getElementById('targetSel').value;
+  updatePaletteSelection();
+}
+function updatePaletteSelection(){
+  const swatches = document.querySelectorAll('.swatch');
+  const cur = state.target === 'fg' ? state.curFg : state.curBg;
+  swatches.forEach((sw, i) => {
+    sw.classList.toggle('sel', (state.target === 'fg' && i === state.curFg) ||
+                               (state.target === 'bg' && i === state.curBg));
+    sw.classList.toggle('target', false);
+  });
+}
+function setBgTransparent(){
+  state.curBg = -1;
+  updateCurrentDisplay();
+  render();
+  setStatus('Background = transparent (magenta).');
+}
+
+// ============================================================================
+// GLYPH BANK UI
+// ============================================================================
+function buildGlyphBank(){
+  const el = document.getElementById('glyphBank');
+  el.innerHTML = '';
+  for(const g of GLYPHS){
+    const cell = document.createElement('div');
+    cell.className = 'glyph-cell';
+    cell.textContent = g;
+    cell.onclick = () => {
+      state.curGlyph = g.codePointAt(0);
+      updateCurrentDisplay();
+      buildGlyphBank();   // refresh selection
+      render();
+    };
+    if(g.codePointAt(0) === state.curGlyph) cell.classList.add('sel');
+    el.appendChild(cell);
+  }
+}
+function onCustomGlyph(){
+  const v = document.getElementById('customGlyph').value;
+  if(!v) return;
+  // Cho phép nhập dạng \u2588 hoặc ký tự thường
+  let cp;
+  if(v.startsWith('\\u') || v.startsWith('\\U')){
+    cp = parseInt(v.slice(2), 16);
+  } else {
+    cp = v.codePointAt(0);
+  }
+  if(cp > 0){
+    state.curGlyph = cp;
+    updateCurrentDisplay();
+    buildGlyphBank();
+    render();
+  }
+}
+
+// ============================================================================
+// CURRENT DISPLAY
+// ============================================================================
+function updateCurrentDisplay(){
+  const preview = document.getElementById('currentPreview');
+  const ch = String.fromCodePoint(state.curGlyph || 0x20);
+  preview.textContent = ch;
+  preview.style.color = CGA[state.curFg].hex;
+  if(state.curBg === -1){
+    preview.style.background = '';
+  } else {
+    preview.style.background = CGA[state.curBg].hex;
+  }
+  document.getElementById('fgLabel').textContent = state.curFg + ' (' + CGA[state.curFg].name + ')';
+  document.getElementById('bgLabel').textContent = state.curBg === -1 ? 'Transparent' : (state.curBg + ' (' + CGA[state.curBg].name + ')');
+}
+
+// ============================================================================
+// CANVAS RENDER
+// ============================================================================
+function resizeCanvas(){
+  const c = document.getElementById('editorCanvas');
+  // Tính cellPx sao cho canvas vừa ~500px max
+  const maxDim = 500;
+  state.cellPx = Math.max(16, Math.min(48, Math.floor(maxDim / Math.max(state.w, state.h))));
+  c.width = state.w * state.cellPx;
+  c.height = state.h * state.cellPx;
+}
+
+function render(){
+  const c = document.getElementById('editorCanvas');
+  const ctx = c.getContext('2d');
+  const px = state.cellPx;
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, c.width, c.height);
+
+  ctx.font = 'bold ' + Math.floor(px * 0.85) + 'px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for(let y = 0; y < state.h; y++){
+    for(let x = 0; x < state.w; x++){
+      const cell = state.cells[y * state.w + x];
+      const cx = x * px, cy = y * px;
+      // Background: transparent = checkerboard, else solid color
+      if(cell.bg === -1 || cell.cp === 0){
+        // checkerboard cho transparent
+        const dark = ((x + y) % 2 === 0);
+        ctx.fillStyle = dark ? '#1a1a1a' : '#222';
+        ctx.fillRect(cx, cy, px, px);
+      } else {
+        ctx.fillStyle = CGA[cell.bg].hex;
+        ctx.fillRect(cx, cy, px, px);
+      }
+      // Foreground glyph
+      if(cell.cp > 0){
+        ctx.fillStyle = CGA[cell.fg].hex;
+        ctx.fillText(String.fromCodePoint(cell.cp), cx + px/2, cy + px/2 + 1);
+      }
+    }
+  }
+
+  // Grid lines
+  if(state.showGrid){
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    for(let x = 0; x <= state.w; x++){
+      ctx.beginPath(); ctx.moveTo(x*px, 0); ctx.lineTo(x*px, state.h*px); ctx.stroke();
+    }
+    for(let y = 0; y <= state.h; y++){
+      ctx.beginPath(); ctx.moveTo(0, y*px); ctx.lineTo(state.w*px, y*px); ctx.stroke();
+    }
+  }
+}
+
+// ============================================================================
+// CANVAS MOUSE
+// ============================================================================
+function canvasToCell(e){
+  const c = document.getElementById('editorCanvas');
+  const rect = c.getBoundingClientRect();
+  const scaleX = c.width / rect.width;
+  const scaleY = c.height / rect.height;
+  const mx = (e.clientX - rect.left) * scaleX;
+  const my = (e.clientY - rect.top) * scaleY;
+  const x = Math.floor(mx / state.cellPx);
+  const y = Math.floor(my / state.cellPx);
+  if(x < 0 || x >= state.w || y < 0 || y >= state.h) return null;
+  return { x, y };
+}
+
+(function attachMouse(){
+  const c = document.getElementById('editorCanvas');
+  c.addEventListener('mousedown', (e) => {
+    const pos = canvasToCell(e);
+    if(!pos) return;
+    e.preventDefault();
+    state.painting = true;
+    state.paintMode = (e.button === 2) ? 'erase' : 'paint';
+    paintAt(pos.x, pos.y);
+  });
+  c.addEventListener('mousemove', (e) => {
+    if(!state.painting) return;
+    const pos = canvasToCell(e);
+    if(pos) paintAt(pos.x, pos.y);
+  });
+  c.addEventListener('mouseup', () => { state.painting = false; });
+  c.addEventListener('mouseleave', () => { state.painting = false; });
+  c.addEventListener('contextmenu', (e) => e.preventDefault());
+})();
+
+function paintAt(x, y){
+  if(state.paintMode === 'erase'){
+    state.cells[y * state.w + x] = { cp: 0, fg: 15, bg: -1 };
+  } else {
+    state.cells[y * state.w + x] = { cp: state.curGlyph, fg: state.curFg, bg: state.curBg };
+  }
+  render();
+  setStatus('Vẽ (' + x + ',' + y + ') glyph=U+' + state.curGlyph.toString(16) + ' fg=' + state.curFg + ' bg=' + (state.curBg === -1 ? 'T' : state.curBg));
+}
+
+// ============================================================================
+// EDITOR API (window.editor) - Dùng cho AI Console
+// ============================================================================
+const editor = {
+  clear(){
+    resetCells(state.w, state.h);
+    render();
+    return true;
+  },
+  getSize(){ return { w: state.w, h: state.h }; },
+  setSize(w, h){
+    w = Math.max(1, Math.min(64, w|0));
+    h = Math.max(1, Math.min(64, h|0));
+    // Giữ data cũ nếu nằm trong vùng mới
+    const old = state.cells.slice();
+    const oldW = state.w, oldH = state.h;
+    resetCells(w, h);
+    for(let y = 0; y < Math.min(oldH, h); y++){
+      for(let x = 0; x < Math.min(oldW, w); x++){
+        state.cells[y*w+x] = old[y*oldW+x];
+      }
+    }
+    document.getElementById('sizeW').value = w;
+    document.getElementById('sizeH').value = h;
+    resizeCanvas();
+    render();
+    return true;
+  },
+  setCell(x, y, charOrCp, fg, bg){
+    if(x < 0 || x >= state.w || y < 0 || y >= state.h) return false;
+    let cp;
+    if(typeof charOrCp === 'number') cp = charOrCp|0;
+    else cp = String(charOrCp).codePointAt(0) || 0;
+    state.cells[y*state.w+x] = {
+      cp: cp,
+      fg: (fg === undefined) ? 15 : (fg|0),
+      bg: (bg === undefined || bg === null) ? -1 : (bg|0),
+    };
+    render();
+    return true;
+  },
+  setGrid(rows){
+    if(!Array.isArray(rows) || !Array.isArray(rows[0])) return false;
+    const h = rows.length, w = rows[0].length;
+    this.setSize(w, h);
+    for(let y = 0; y < h; y++){
+      for(let x = 0; x < w; x++){
+        const c = rows[y][x] || {};
+        let cp = 0;
+        if(c.c !== undefined){
+          cp = (typeof c.c === 'number') ? (c.c|0) : (String(c.c).codePointAt(0) || 0);
+        }
+        state.cells[y*w+x] = {
+          cp: cp,
+          fg: (c.fg === undefined) ? 15 : (c.fg|0),
+          bg: (c.bg === undefined || c.bg === null) ? -1 : (c.bg|0),
+        };
+      }
+    }
+    render();
+    return true;
+  },
+  fillRect(x0, y0, x1, y1, charOrCp, fg, bg){
+    let cp;
+    if(typeof charOrCp === 'number') cp = charOrCp|0;
+    else cp = String(charOrCp).codePointAt(0) || 0;
+    for(let y = y0; y <= y1; y++){
+      for(let x = x0; x <= x1; x++){
+        this.setCell(x, y, cp, fg, bg);
+      }
+    }
+    return true;
+  },
+  fillGlyph(charOrCp, fg, bg){
+    this.fillRect(0, 0, state.w-1, state.h-1, charOrCp, fg, bg);
+    return true;
+  },
+  getGrid(){
+    const rows = [];
+    for(let y = 0; y < state.h; y++){
+      const row = [];
+      for(let x = 0; x < state.w; x++){
+        const c = state.cells[y*state.w+x];
+        if(c.cp === 0){
+          row.push({});
+        } else {
+          const obj = { c: String.fromCodePoint(c.cp), fg: c.fg };
+          if(c.bg !== -1) obj.bg = c.bg;
+          row.push(obj);
+        }
+      }
+      rows.push(row);
+    }
+    return rows;
+  },
+  getJS(){
+    const rows = this.getGrid();
+    let out = 'editor.setSize(' + state.w + ',' + state.h + ');\neditor.setGrid([\n';
+    for(const row of rows){
+      const cells = row.map(c => {
+        if(Object.keys(c).length === 0) return '{}';
+        const parts = [];
+        // Escape char thành '█' hoặc codepoint hex nếu không printable
+        if(c.c){
+          const cp = c.c.codePointAt(0);
+          if(cp >= 0x20 && cp < 0x7f){
+            parts.push("c:'" + c.c + "'");
+          } else {
+            parts.push('c:0x' + cp.toString(16).toUpperCase());
+          }
+        }
+        if(c.fg !== undefined) parts.push('fg:' + c.fg);
+        if(c.bg !== undefined) parts.push('bg:' + c.bg);
+        return '{' + parts.join(', ') + '}';
+      });
+      out += '  [' + cells.join(', ') + '],\n';
+    }
+    out += ']);';
+    return out;
+  },
+  getC(name){
+    name = name || 'SPRITE';
+    let out = '/* Auto-generated by sprite_editor.html */\n';
+    out += '/* ' + state.w + 'x' + state.h + ', column-major (x outer, y inner) */\n';
+    out += 'static const XpCell ' + name + '[' + (state.w * state.h) + '] = {\n';
+    // COLUMN-MAJOR: x outer, y inner (khớp xp_loader.c)
+    for(let x = 0; x < state.w; x++){
+      for(let y = 0; y < state.h; y++){
+        const c = state.cells[y*state.w+x];
+        let cp = c.cp, fr=0,fg=0,fb=0, br=255,bg=0,bb=255;
+        if(cp > 0){
+          const fc = CGA[c.fg]; fr=fc.r; fg=fc.g; fb=fc.b;
+          if(c.bg !== -1){
+            const bc = CGA[c.bg]; br=bc.r; bg=bc.g; bb=bc.b;
+          }
+        } else { cp = 0; }
+        const cpHex = '0x' + cp.toString(16).toUpperCase();
+        out += '  {' + cpHex + ', ' + fr + ',' + fg + ',' + fb + ', ' + br + ',' + bg + ',' + bb + '}';
+        if(x < state.w-1 || y < state.h-1) out += ',';
+        out += '  /* (' + x + ',' + y + ') */\n';
+      }
+    }
+    out += '};\n';
+    out += '#define ' + name + '_W ' + state.w + '\n';
+    out += '#define ' + name + '_H ' + state.h + '\n';
+    return out;
+  },
+  async exportXp(filename){
+    filename = filename || ('sprite_' + state.w + 'x' + state.h + '.xp');
+    const data = buildXpBuffer();
+    try {
+      const gzipped = await gzipBuffer(data);
+      downloadBlob(new Blob([gzipped]), filename);
+      setStatus('✅ Exported ' + filename + ' (' + gzipped.byteLength + ' bytes gzipped, ' + data.byteLength + ' raw)');
+    } catch(e) {
+      alert('Export thất bại: ' + e.message + '\n\nBrowser cần hỗ trợ CompressionStream (Chrome 80+/Edge).');
+    }
+    return filename;
+  },
+  async loadXp(buf){
+    try {
+      const decompressed = await gunzipBuffer(buf);
+      parseXpBuffer(decompressed);
+      setStatus('✅ Imported .xp (' + state.w + 'x' + state.h + ')');
+      render();
+      return true;
+    } catch(e){
+      alert('Import thất bại: ' + e.message);
+      return false;
+    }
+  },
+};
+window.editor = editor;
+
+// ============================================================================
+// .XP FORMAT (spec REXpaint - khớp xp_loader.c)
+// ============================================================================
+function buildXpBuffer(){
+  // Header: version i32 (=3), layer_count i32 (=1)
+  // Layer: w i32, h i32, cells (column-major: x outer, y inner), mỗi cell 10 byte
+  const nCells = state.w * state.h;
+  const buf = new ArrayBuffer(8 + 8 + nCells * 10);
+  const dv = new DataView(buf);
+  let pos = 0;
+  dv.setInt32(pos, 3, true); pos += 4;       // version
+  dv.setInt32(pos, 1, true); pos += 4;       // layer_count
+  dv.setInt32(pos, state.w, true); pos += 4;
+  dv.setInt32(pos, state.h, true); pos += 4;
+  // COLUMN-MAJOR: x outer, y inner
+  for(let x = 0; x < state.w; x++){
+    for(let y = 0; y < state.h; y++){
+      const c = state.cells[y*state.w+x];
+      let cp = c.cp, fr=0,fg=0,fb=0, br=255,bgGreen=0,bb=255;
+      if(cp > 0){
+        const fc = CGA[c.fg]; fr=fc.r; fg=fc.g; fb=fc.b;
+        if(c.bg !== -1){
+          const bc = CGA[c.bg]; br=bc.r; bgGreen=bc.g; bb=bc.b;
+        }
+      } else { cp = 0; }
+      dv.setInt32(pos, cp, true); pos += 4;
+      dv.setUint8(pos++, fr); dv.setUint8(pos++, fg); dv.setUint8(pos++, fb);
+      dv.setUint8(pos++, br); dv.setUint8(pos++, bgGreen); dv.setUint8(pos++, bb);
+    }
+  }
+  return buf;
+}
+
+function parseXpBuffer(buf){
+  const dv = new DataView(buf);
+  let pos = 0;
+  const version = dv.getInt32(pos, true); pos += 4;
+  const layerCount = dv.getInt32(pos, true); pos += 4;
+  if(layerCount < 1) throw new Error('layer_count = ' + layerCount);
+  // Chỉ đọc layer đầu (tool này single-layer)
+  const w = dv.getInt32(pos, true); pos += 4;
+  const h = dv.getInt32(pos, true); pos += 4;
+  if(w < 1 || h < 1 || w > 64 || h > 64) throw new Error('size ' + w + 'x' + h + ' out of range');
+  resetCells(w, h);
+  document.getElementById('sizeW').value = w;
+  document.getElementById('sizeH').value = h;
+  // COLUMN-MAJOR: x outer, y inner
+  for(let x = 0; x < w; x++){
+    for(let y = 0; y < h; y++){
+      const cp = dv.getInt32(pos, true); pos += 4;
+      const fr = dv.getUint8(pos++), fg = dv.getUint8(pos++), fb = dv.getUint8(pos++);
+      const br = dv.getUint8(pos++), bgGreen = dv.getUint8(pos++), bb = dv.getUint8(pos++);
+      let fgIdx = rgbToCga(fr, fg, fb);
+      let bgIdx;
+      if(br === 255 && bgGreen === 0 && bb === 255) bgIdx = -1;
+      else bgIdx = rgbToCga(br, bgGreen, bb);
+      state.cells[y*w+x] = { cp: cp, fg: fgIdx, bg: bgIdx };
+    }
+  }
+  resizeCanvas();
+}
+
+// Quantize RGB -> CGA index (match xp_rgb_to_ce trong xp_render.c)
+function rgbToCga(r, g, b){
+  let best = 0, bestD = Infinity;
+  for(let i = 0; i < 16; i++){
+    const dr = r - CGA[i].r, dg = g - CGA[i].g, db = b - CGA[i].b;
+    const d = dr*dr + dg*dg + db*db;
+    if(d < bestD){ bestD = d; best = i; }
+  }
+  return best;
+}
+
+// ============================================================================
+// GZIP (CompressionStream / DecompressionStream - native browser API)
+// ============================================================================
+async function gzipBuffer(buf){
+  if(typeof CompressionStream === 'undefined'){
+    throw new Error('Browser không hỗ trợ CompressionStream');
+  }
+  const cs = new CompressionStream('gzip');
+  const writer = cs.writable.getWriter();
+  writer.write(new Uint8Array(buf));
+  writer.close();
+  const reader = cs.readable.getReader();
+  const chunks = [];
+  let totalLen = 0;
+  while(true){
+    const { done, value } = await reader.read();
+    if(done) break;
+    chunks.push(value); totalLen += value.length;
+  }
+  const out = new Uint8Array(totalLen);
+  let off = 0;
+  for(const ch of chunks){ out.set(ch, off); off += ch.length; }
+  return out;
+}
+
+async function gunzipBuffer(buf){
+  if(typeof DecompressionStream === 'undefined'){
+    throw new Error('Browser không hỗ trợ DecompressionStream');
+  }
+  const ds = new DecompressionStream('gzip');
+  const writer = ds.writable.getWriter();
+  writer.write(new Uint8Array(buf));
+  writer.close();
+  const reader = ds.readable.getReader();
+  const chunks = [];
+  let totalLen = 0;
+  while(true){
+    const { done, value } = await reader.read();
+    if(done) break;
+    chunks.push(value); totalLen += value.length;
+  }
+  const out = new Uint8Array(totalLen);
+  let off = 0;
+  for(const ch of chunks){ out.set(ch, off); off += ch.length; }
+  return out.buffer;
+}
+
+// ============================================================================
+// FILE I/O
+// ============================================================================
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function onImportFile(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    editor.loadXp(e.target.result);
+  };
+  reader.readAsArrayBuffer(file);
+  event.target.value = '';   // reset để chọn lại cùng file
+}
+
+async function exportXp(){
+  await editor.exportXp();
+}
+
+// ============================================================================
+// TOOLBAR ACTIONS
+// ============================================================================
+function newSprite(){
+  const w = parseInt(document.getElementById('sizeW').value) || 3;
+  const h = parseInt(document.getElementById('sizeH').value) || 3;
+  resetCells(w, h);
+  resizeCanvas();
+  render();
+  setStatus('🆕 New sprite ' + w + '×' + h);
+}
+
+function applySize(){
+  const w = parseInt(document.getElementById('sizeW').value) || 1;
+  const h = parseInt(document.getElementById('sizeH').value) || 1;
+  editor.setSize(w, h);
+  setStatus('Size = ' + state.w + '×' + state.h);
+}
+
+function applyPreset(){
+  const v = document.getElementById('presetSel').value;
+  if(!v) return;
+  const presets = {
+    tile1:  { w:1, h:1 },
+    tile3:  { w:3, h:3 },
+    mon3:   { w:3, h:3 },
+    mon5:   { w:5, h:5 },
+    item2:  { w:2, h:2 },
+    spell3: { w:3, h:3 },
+    spell5: { w:5, h:5 },
+    ui7x1:  { w:46, h:7 },
+  };
+  const p = presets[v];
+  if(p){
+    resetCells(p.w, p.h);
+    document.getElementById('sizeW').value = p.w;
+    document.getElementById('sizeH').value = p.h;
+    resizeCanvas();
+    render();
+    setStatus('Preset: ' + v + ' (' + p.w + '×' + p.h + ')');
+  }
+}
+
+// ============================================================================
+// AI CONSOLE
+// ============================================================================
+function runConsole(){
+  const code = document.getElementById('aiConsole').value;
+  if(!code.trim()) { setStatus('Console trống.'); return; }
+  try {
+    // Wrap trong async function để hỗ trợ await editor.exportXp()
+    const fn = new Function('editor', 'CGA', code);
+    fn(editor, CGA);
+    setStatus('✅ JS executed OK');
+  } catch(e){
+    setStatus('❌ JS error: ' + e.message);
+    console.error(e);
+  }
+}
+
+function loadExample(){
+  document.getElementById('aiConsole').value =
+`// Ví dụ: GÓBLIN 3x3 (đỏ, dáng nhỏ, còng lưng)
+editor.setSize(3, 3);
+editor.setGrid([
+  [ {},      {c:'g',fg:12}, {}     ],
+  [ {c:'█',fg:2,bg:2}, {c:'█',fg:2,bg:2}, {c:'█',fg:2,bg:2} ],
+  [ {c:'·',fg:8}, {},      {c:'·',fg:8} ]
+]);
+// Bấm [Run JS] rồi [Export .xp] để tải file goblin.xp`;
+  setStatus('Đã load example. Bấm [Run JS].');
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+function copyToClipboard(text, msg){
+  navigator.clipboard.writeText(text).then(() => {
+    setStatus('📋 ' + msg);
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); setStatus('📋 ' + msg); }
+    catch(e){ setStatus('Copy thất bại - chọn thủ công'); }
+    document.body.removeChild(ta);
+  });
+}
+
+function setStatus(msg){
+  document.getElementById('status').textContent = msg;
+  console.log('[editor]', msg);
+}
+
+// ============================================================================
+// START
+// ============================================================================
+init();
+</script>
+</body>
+</html>
