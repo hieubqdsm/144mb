@@ -33,7 +33,7 @@ static void print_dice(DamageDetail d){
         else printf("%d", d.mod);
     }
     printf(" = %d", d.total);
-    if(d.crit) printf(" (CRIT x2 dice!)");
+    if(d.crit) printf(" (CHÍ MẠNG x2 xúc xắc!)");
 }
 
 /* =====================================================================
@@ -82,11 +82,11 @@ static int anim_roll_d20(int final, RNG *rng){
 
 /* Animation tung damage dice: nhieu die nhap nhay roi hien total. */
 static void anim_roll_damage(DamageDetail d, RNG *rng){
-    if(d.n_rolls == 0){ printf("    [no damage dice]\n"); return; }
+    if(d.n_rolls == 0){ printf("    [không có xúc xắc sát thương]\n"); return; }
     int frames = 6;
     for(int i = 0; i < frames; i++){
         /* In gia tri fake cho tung die */
-        char buf[80] = "    [rolling] ";
+        char buf[80] = "    [đang lăn] ";
         for(int j = 0; j < d.n_rolls && j < 8; j++){
             char nb[8];
             int fake = rng_range(rng, 1, 12);
@@ -103,7 +103,7 @@ static void anim_roll_damage(DamageDetail d, RNG *rng){
     }
     /* Hien ket qua cuoi */
     printf("\r%-60s\r", "");
-    printf("    Damage: ");
+    printf("    Sát thương: ");
     print_dice(d);
     printf("\n");
     fflush(stdout);
@@ -116,7 +116,7 @@ static void do_attack_print(Actor *src, Actor *tgt, int action_idx, RNG *rng){
     Ability ab = is_ranged ? AB_DEX : AB_STR;
     int mod = actor_ability_mod(src->type->scores[ab]);
 
-    printf("  %s tan cong %s bang %s:\n", src->type->name, tgt->type->name, atk->name);
+    printf("  %s tấn công %s bằng %s:\n", src->type->name, tgt->type->name, atk->name);
 
     /* Roll d20 truoc (de co gia tri final cho animation) */
     D20Result roll = d20_roll(mod + atk->atk_bonus, ROLL_NORMAL, rng);
@@ -124,26 +124,26 @@ static void do_attack_print(Actor *src, Actor *tgt, int action_idx, RNG *rng){
 
     /* Nhan SPACE de tung d20 */
     char prompt[80];
-    sprintf(prompt, "    Nhan SPACE de tung d20 (atk %+d vs AC %d)... ", mod + atk->atk_bonus, target_ac);
+    sprintf(prompt, "    Nhấn SPACE để tung d20 (+%d vs AC %d)... ", mod + atk->atk_bonus, target_ac);
     wait_key(prompt);
     anim_roll_d20(roll.die, rng);
-    printf("    raw %d%s + atk %+d = %d  vs AC %d\n",
+    printf("    raw %d%s + %+d = %d  so với AC %d\n",
            roll.die, roll.nat20 ? " NAT20!" : roll.nat1 ? " NAT1!" : "",
            mod + atk->atk_bonus, roll.total, target_ac);
 
     if(roll.nat1){
-        printf("    -> FUMBLE! Hut te.\n\n");
+        printf("    -> LỠ TAY! Tấn công hụt.\n\n");
         return;
     }
     int hit = roll.nat20 || (roll.total >= target_ac);
     if(!hit){
-        printf("    -> HUT (AC %d > %d)\n\n", target_ac, roll.total);
+        printf("    -> HỤT (AC %d > %d)\n\n", target_ac, roll.total);
         return;
     }
     /* HIT -> tung damage dice (animation) */
-    printf("    -> %s!\n", roll.nat20 ? "*** CRIT HIT ***" : "HIT");
+    printf("    -> %s!\n", roll.nat20 ? "*** CHÍ MẠNG ***" : "TRÚNG ĐÒN");
     DamageDetail dmg = d20_roll_damage_detail(atk->damage, roll.nat20, rng);
-    wait_key("    Nhan SPACE de tung damage dice... ");
+    wait_key("    Nhấn SPACE để tung xúc xắc sát thương... ");
     anim_roll_damage(dmg, rng);
     actor_take_damage(tgt, dmg.total);
     printf("    %s HP: %d/%d\n\n", tgt->type->name, tgt->hp, tgt->max_hp);
@@ -151,7 +151,7 @@ static void do_attack_print(Actor *src, Actor *tgt, int action_idx, RNG *rng){
 
 /* Helper: in HP bar */
 static void print_hp_bar(const Actor *a){
-    printf("  %s: [", a->type->name);
+    printf("  %s: [", a == NULL ? "?" : a->type->name);
     int w = 30;
     int fill = a->hp * w / a->max_hp;
     if(fill > w) fill = w;
@@ -177,36 +177,36 @@ int main(void){
     printf("  ANH HÙNG   (Chiến binh):  HP %d, AC %d, SỨC MẠNH %d (%+d)\n",
            hero.hp, hero.type->ac, hero.type->scores[AB_STR],
            actor_ability_mod(hero.type->scores[AB_STR]));
-    printf("  RỒNG      (Trùm):        HP %d, AC %d\n\n",
+    printf("  RỒNG       (Trùm):        HP %d, AC %d\n\n",
            dragon.hp, dragon.type->ac);
 
     int round = 1;
     int turn = 0;   /* 0 = hero, 1 = dragon */
 
     while(!actor_is_dead(&hero) && !actor_is_dead(&dragon)){
-        printf("---- ROUND %d - %s TURN ----\n", round, turn==0 ? "HERO" : "DRAGON");
+        printf("---- HIỆP %d - LƯỢT %s ----\n", round, turn==0 ? "ANH HÙNG" : "RỒNG");
         print_hp_bar(&hero);
         print_hp_bar(&dragon);
         printf("\n");
 
         if(turn == 0){
-            /* Hero turn: attack hoac uong potion neu HP thap */
+            /* Anh hùng: tấn công hoặc uống thuốc nếu HP thấp */
             if(hero.hp < 15 && hero.hp > 0){
-                printf("  HERO uong potion (heal 2d4+2):\n");
+                printf("  ANH HÙNG uống thuốc (hồi 2d4+2):\n");
                 DamageDetail heal;
                 heal.rolls[0] = rng_range(&g_r, 1, 4);
                 heal.rolls[1] = rng_range(&g_r, 1, 4);
                 heal.n_rolls = 2; heal.mod = 2; heal.crit = 0;
                 heal.total = heal.rolls[0] + heal.rolls[1] + 2;
-                wait_key("    Nhan SPACE de tung heal dice... ");
+                wait_key("    Nhấn SPACE để tung xúc xắc hồi máu... ");
                 anim_roll_damage(heal, &g_r);
                 actor_heal(&hero, heal.total);
-                printf("    HERO HP: %d/%d\n\n", hero.hp, hero.max_hp);
+                printf("    HP ANH HÙNG: %d/%d\n\n", hero.hp, hero.max_hp);
             } else {
                 do_attack_print(&hero, &dragon, 0, &g_r);  /* Longsword */
             }
         } else {
-            /* Dragon turn: multiattack (2x) - Bite + Fire Breath */
+            /* Rồng: tấn công kép (2x) - Cắn + Phun lửa */
             do_attack_print(&dragon, &hero, 0, &g_r);   /* Bite (2d10+6) */
             if(!actor_is_dead(&hero)){
                 do_attack_print(&dragon, &hero, 1, &g_r);  /* Fire Breath */

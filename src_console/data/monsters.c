@@ -32,9 +32,9 @@ static const MonsterAction goblin_actions[] = {
 
 /* --- Player: Longsword (melee) + Fire Bolt (cantrip ranged) --- */
 static const MonsterAction player_actions[] = {
-    { .name="Longsword", .atk_bonus=5, .reach=5,   .range_max=0,
+    { .name="Kiếm dài", .atk_bonus=5, .reach=5,   .range_max=0,
       .damage=DICE(1,8,3), .dmg_type=DMG_SLASHING },
-    { .name="Fire Bolt", .atk_bonus=5, .reach=120, .range_max=0,
+    { .name="Tiễn lửa", .atk_bonus=5, .reach=120, .range_max=0,
       .damage=DICE(1,10,0), .dmg_type=DMG_FIRE },
 };
 
@@ -68,11 +68,11 @@ static const MonsterAction ogre_actions[] = {
       .damage=DICE(1,10,4), .dmg_type=DMG_PIERCING },
 };
 
-/* --- Dragon (boss): Bite + Fire Breath (multiattack 2/turn) --- */
+/* --- Dragon (boss): Cắn + Phun lửa (multiattack 2/turn) --- */
 static const MonsterAction dragon_actions[] = {
-    { .name="Bite",        .atk_bonus=8, .reach=5, .range_max=0,
+    { .name="Cắn",        .atk_bonus=8, .reach=5, .range_max=0,
       .damage=DICE(2,10,6), .dmg_type=DMG_PIERCING },
-    { .name="Fire Breath", .atk_bonus=8, .reach=0, .range_max=0,
+    { .name="Phun lửa", .atk_bonus=8, .reach=0, .range_max=0,
       .damage=DICE(8,6,0), .dmg_type=DMG_FIRE },
 };
 
@@ -109,7 +109,7 @@ const MonsterType MONSTERS[N_MONSTERS] = {
 
     /* [ID_PLAYER] - Hero template --------------------------- */
     [ID_PLAYER] = {
-        .name       = "Hero",
+        .name       = "Anh hùng",
         .size       = SIZE_MEDIUM,
         .type       = TYPE_HUMANOID,
         .ac         = 16,
@@ -204,7 +204,7 @@ const MonsterType MONSTERS[N_MONSTERS] = {
 
     /* [ID_DRAGON] - CR 5, boss (multiattack) ---------------- */
     [ID_DRAGON] = {
-        .name       = "Dragon",
+        .name       = "Rồng",
         .size       = SIZE_HUGE,
         .type       = TYPE_DRAGON,
         .ac         = 17,
