@@ -30,6 +30,8 @@
 #include "spell_resolve.h"
 #include "dungeon.h"
 #include "ui.h"
+#include "save.h"
+#include "i18n.h"
 /* data tables compiled rieng (declarations trong headers) */
 #include "../data/monsters.h"
 #include "../game/items.h"
@@ -39,6 +41,7 @@
 
 /* ---------- Global state ---------- */
 RNG g_r;
+Lang g_lang = LANG_VI;      /* ngon ngu UI (defined extern trong i18n.h) */
 static Floor g_floor;
 static Actor g_all[20];     /* player + monsters, index 0 = player */
 static int g_n_actors;
@@ -50,6 +53,9 @@ static int g_in_combat = 0;
 static int g_show_inventory = 0;
 static int g_ai_delay = 0;
 static int g_level = 1;
+static int g_player_class = 0;        /* 0 = Fighter, 1 = Mage (remember khi load) */
+static char g_feedback[80] = {0};     /* thong bao tam thoi (vd "Da luu!") hien tren title */
+static int  g_feedback_frames = 0;    /* dem frame de fade feedback */
 
 /* XP can de len level (D&D 5e simplified: 300, 900, 2700... x3 moi cap) */
 static int xp_threshold(int level){
@@ -119,8 +125,9 @@ static void log_add(const char *msg){
 }
 
 /* State machine */
-enum { ST_TITLE, ST_CLASS, ST_PLAY, ST_DEAD };
+enum { ST_TITLE, ST_CLASS, ST_PLAY, ST_PAUSE, ST_OPTIONS, ST_ABOUT, ST_DEAD };
 static int g_state = ST_TITLE;
+static int g_prev_state = ST_TITLE;   /* de ESC quay lai state truoc (vd Options<-Title) */
 static int g_frame = 0;
 
 /* ---------- Helpers ---------- */
@@ -178,6 +185,67 @@ static void new_game(int class_idx){
     log_add("=== DUNGEON CRAWL START ===");
     start_floor(1);
     g_state = ST_PLAY;
+}
+
+/* ---------- Save/Load wire-up ---------- */
+/* Gom state hien tai thanh SaveData va luu ra SAVE_PATH.
+   Tra ve 1 neu thanh cong. */
+static int do_save(void){
+    Actor *p = get_player();
+    SaveData s = {0};
+    s.hp = p->hp; s.max_hp = p->max_hp; s.ac = p->type->ac;
+    s.str = p->type->scores[AB_STR]; s.dex = p->type->scores[AB_DEX];
+    s.con = p->type->scores[AB_CON]; s.intl = p->type->scores[AB_INT];
+    s.wis = p->type->scores[AB_WIS]; s.cha = p->type->scores[AB_CHA];
+    s.xp = p->xp; s.level = g_level;
+    s.x = g_player_x; s.y = g_player_y;
+    s.depth = g_depth;
+    s.n_potions = inv_count(&g_inv, ID_HEAL_POTION);
+    s.has_weapon = (g_inv.equipped[SLOT_WEAPON].type != NULL) ? 1 : 0;
+    s.has_armor  = (g_inv.equipped[SLOT_ARMOR].type  != NULL) ? 1 : 0;
+    s.class_idx  = g_player_class;
+    s.rng_state  = g_r.state;
+    return save_quick(&s);
+}
+
+/* Load tu SAVE_PATH, restore actor/inv/rng, regenerate floor (cung depth).
+   Tra ve 1 neu thanh cong. */
+static int do_load(void){
+    SaveData s;
+    if(!load_quick(&s)) return 0;
+    /* Restore RNG truoc de dungeon_generate deterministic */
+    if(s.rng_state == 0) s.rng_state = (uint64_t)GetTickCount() | 1;
+    rng_seed(&g_r, s.rng_state);
+    g_r.state = s.rng_state;   /* dung y state da save (rng_seed co the xor) */
+    /* Player: dung class da luu de set type/HP cho chinh xac */
+    g_player_class = s.class_idx;
+    g_all[0] = actor_spawn(&MONSTERS[ID_PLAYER], s.x, s.y, TEAM_PLAYER, &g_r);
+    if(s.class_idx == 1){ g_all[0].hp = g_all[0].max_hp = 16; }
+    else { g_all[0].hp = s.hp; g_all[0].max_hp = s.max_hp; }
+    get_player()->xp = (uint16_t)s.xp;
+    get_player()->level = (uint8_t)s.level;
+    g_level = s.level;
+    /* Inventory: longsword equipped + potions + optional armor */
+    inv_init(&g_inv);
+    inv_add(&g_inv, &ITEMS[ID_LONGSWORD], 1);
+    inv_equip(&g_inv, 0);
+    inv_add(&g_inv, &ITEMS[ID_HEAL_POTION], s.n_potions);
+    g_game_over = 0;
+    g_log_n = 0;
+    log_add(T(S_CONTINUE));
+    start_floor(s.depth);
+    /* start_floor dat player tai player_start; override bang vi tri da save */
+    g_player_x = s.x; g_player_y = s.y;
+    g_all[0].x = (int8_t)s.x; g_all[0].y = (int8_t)s.y;
+    fov_compute(g_floor.map, g_player_x, g_player_y, 8);
+    return 1;
+}
+
+/* Hien feedback tam thoi tren title (vd sau save). */
+static void show_feedback(const char *msg){
+    strncpy(g_feedback, msg, sizeof(g_feedback)-1);
+    g_feedback[sizeof(g_feedback)-1] = 0;
+    g_feedback_frames = 180;   /* ~3 giay @ 60fps */
 }
 
 /* ---------- Turn resolution ---------- */
@@ -296,66 +364,197 @@ static void draw_map(int ox, int oy){
 
 static void draw_sidebar(int ox){
     int y = 1;
-    ui_actor_panel(ox+2, y, get_player(), "=== HERO ===", 10);
+    ui_actor_panel(ox+2, y, get_player(), T(S_HERO), 10);
     y = 12;
     char b[80];
-    sprintf(b, "Level: %d", g_level); ce_text(ox+2, y++, b, 14);
+    sprintf(b, T(S_LEVEL_FMT), g_level); ce_text(ox+2, y++, b, 14);
     sprintf(b, "XP: %d / %d", get_player()->xp, xp_threshold(g_level)); ce_text(ox+2, y++, b, 11);
-    sprintf(b, "Tang: %d", g_depth); ce_text(ox+2, y++, b, 13);
+    sprintf(b, T(S_DEPTH_FMT), g_depth); ce_text(ox+2, y++, b, 13);
     y++;
     /* Dem monster con song */
     int alive = 0;
     for(int i=1;i<g_n_actors;i++) if(!actor_is_dead(&g_all[i])) alive++;
-    sprintf(b, "Monsters: %d", alive); ce_text(ox+2, y++, b, 12);
+    sprintf(b, T(S_MONSTERS_FMT), alive); ce_text(ox+2, y++, b, 12);
     /* Potions */
     int pot = inv_count(&g_inv, ID_HEAL_POTION);
-    sprintf(b, "Potions: %d", pot); ce_text(ox+2, y++, b, 10);
+    sprintf(b, T(S_POTIONS_FMT), pot); ce_text(ox+2, y++, b, 10);
     y++;
-    ce_text(ox+2, y++, "=== CONTROLS ===", 8);
-    ce_text(ox+2, y++, "WASD: move/attack", 7);
-    ce_text(ox+2, y++, "1: Fire Bolt", 12);
-    ce_text(ox+2, y++, "2: Magic Missile", 11);
-    ce_text(ox+2, y++, "H: heal potion", 10);
-    ce_text(ox+2, y++, "I: inventory", 14);
-    ce_text(ox+2, y++, ">: descend stairs", 11);
+    ce_text(ox+2, y++, T(S_CONTROLS), 8);
+    ce_text(ox+2, y++, T(S_CTRL_MOVE), 7);
+    ce_text(ox+2, y++, T(S_CTRL_SPELL1), 12);
+    ce_text(ox+2, y++, T(S_CTRL_SPELL2), 11);
+    ce_text(ox+2, y++, T(S_CTRL_POTION), 10);
+    ce_text(ox+2, y++, T(S_CTRL_INV), 14);
+    ce_text(ox+2, y++, T(S_CTRL_STAIRS), 11);
 }
 
-/* ---------- Title / class select ---------- */
+/* ---------- Title / class select / pause / options / about ---------- */
 static void draw_title(void){
     ce_clear(1);
     ce_border((WCHAR)0x2593, 9);
-    /* Title ASCII art dung ky tu thuong (tranh UTF-8 bug) */
+    /* Title ASCII art dung ky tu thuong (ASCII art chi dung '#' - khong loi UTF-8) */
     ce_sprite(SCREEN_W/2-17, 6,
         "  ####  ####  #   #  #####   ###    ####  #   #\n"
         " #     #      ## ##  #        #    #      #   #\n"
         " #     ####   # # #  ####     #    #      #####\n"
         " #     #      #   #  #        #    #      #   #\n"
         "  #### ####   #   #  #       ###    ####  #   #", 14);
-    ce_text(SCREEN_W/2-10, 14, "ASCII DUNGEON CRAWLER", 11);
-    ce_text(SCREEN_W/2-8, 16, "a 1.44MB roguelike", 8);
-    if(ui_button(SCREEN_W/2-8, 22, 16, "> NEW GAME", 10)){
-        g_state = ST_CLASS;
+    ce_text(SCREEN_W/2-10, 14, T(S_TITLE), 11);
+    ce_text(SCREEN_W/2-13, 16, T(S_SUBTITLE), 8);
+
+    /* Buttons: Continue (chi khi co save) + New + Options + Quit.
+       Layout auto can giua theo so nut. */
+    int has_save = save_quick_exists();
+    int n_btn = has_save ? 4 : 3;
+    int btn_w = 22;
+    int btn_x = SCREEN_W/2 - btn_w/2;
+    int gap = 5;
+    /* Y bat dau sao cho block nut can giua vung [20..SCREEN_H-6] */
+    int total_h = n_btn * 3 + (n_btn-1) * (gap-3);
+    int y0 = 20 + ((SCREEN_H - 6 - 20) - total_h) / 2;
+    int by = y0;
+
+    if(has_save){
+        if(ui_button(btn_x, by, btn_w, T(S_CONTINUE), 10)){
+            if(do_load()){
+                show_feedback(T(S_CONTINUE));
+                g_state = ST_PLAY;
+            } else {
+                show_feedback(T(S_LOAD_FAIL));
+            }
+        }
+        by += gap;
     }
-    ce_text(SCREEN_W/2-7, SCREEN_H-3, "ESC to quit", 8);
+    if(ui_button(btn_x, by, btn_w, T(S_NEW_GAME), 11)){ g_state = ST_CLASS; }
+    by += gap;
+    if(ui_button(btn_x, by, btn_w, T(S_OPTIONS), 13)){
+        g_prev_state = ST_TITLE;
+        g_state = ST_OPTIONS;
+    }
+    by += gap;
+    if(ui_button(btn_x, by, btn_w, T(S_QUIT), 12)){ ce_quit(); }
+
+    /* Feedback tam thoi (sau save/load) */
+    if(g_feedback_frames > 0){
+        ce_text(SCREEN_W/2-20, SCREEN_H-5, g_feedback, 14);
+    }
+    /* Hint phia duoi */
+    ce_text(SCREEN_W/2-18, SCREEN_H-3, T(S_LANG_HINT), 8);
+    ce_text(SCREEN_W/2-7, SCREEN_H-2, T(S_ESC_HINT), 8);
+    /* Version goc phai */
+    ce_text(SCREEN_W-9, SCREEN_H-1, T(S_VERSION), 8);
+
+    /* Phim L: doi ngon ngu */
+    if(ce_keyPressed('L')) i18n_cycle();
 }
 
 static void draw_class(void){
     ce_clear(0);
-    ce_text(SCREEN_W/2-9, 3, "CHOOSE YOUR CLASS", 14);
-    if(ui_button(SCREEN_W/2-10, 8, 20, "FIGHTER (STR)", 12)){ new_game(0); }
-    if(ui_button(SCREEN_W/2-10, 14, 20, "MAGE (INT)", 9)){ new_game(1); }
-    ce_text(SCREEN_W/2-10, 22, "Ca 2 deu bat dau voi:", 7);
-    ce_text(SCREEN_W/2-12, 24, "- Longsword, 3 Healing Potions", 8);
-    ce_text(SCREEN_W/2-9, SCREEN_H-3, "ESC: back", 8);
+    ce_text(SCREEN_W/2-13, 3, T(S_CHOOSE_CLASS), 14);
+    if(ui_button(SCREEN_W/2-13, 8, 26, T(S_FIGHTER), 12)){ g_player_class = 0; new_game(0); }
+    if(ui_button(SCREEN_W/2-13, 14, 26, T(S_MAGE), 9)){ g_player_class = 1; new_game(1); }
+    ce_text(SCREEN_W/2-15, 22, T(S_CLASS_START), 7);
+    ce_text(SCREEN_W/2-20, 24, T(S_CLASS_GEAR), 8);
+    ce_text(SCREEN_W/2-9, SCREEN_H-3, T(S_BACK), 8);
+}
+
+/* Pause overlay: ve LEN tren man hinh play (KHONG clear). */
+static void draw_pause(void){
+    /* Box nen dam de che man hinh play */
+    int bw = 28, bh = 11;
+    int bx = SCREEN_W/2 - bw/2;
+    int by = SCREEN_H/2 - bh/2;
+    ce_fillbg(bx, by, bx+bw, by+bh, 4);   /* nen do dam */
+    /* Border */
+    for(int i=0;i<bw;i++){
+        ce_putc(bx+i, by, (WCHAR)0x2550, 14);
+        ce_putc(bx+i, by+bh-1, (WCHAR)0x2550, 14);
+    }
+    for(int i=0;i<bh;i++){
+        ce_putc(bx, by+i, (WCHAR)0x2551, 14);
+        ce_putc(bx+bw-1, by+i, (WCHAR)0x2551, 14);
+    }
+    ce_putc(bx, by, (WCHAR)0x2554, 14);            /* goc tren trai */
+    ce_putc(bx+bw-1, by, (WCHAR)0x2557, 14);       /* tren phai */
+    ce_putc(bx, by+bh-1, (WCHAR)0x255A, 14);       /* duoi trai */
+    ce_putc(bx+bw-1, by+bh-1, (WCHAR)0x255D, 14);  /* duoi phai */
+
+    int title_len = (int)strlen(T(S_PAUSE_TITLE));
+    ce_text(SCREEN_W/2 - title_len/2, by+1, T(S_PAUSE_TITLE), 14);
+
+    int bwx = 20, bxx = SCREEN_W/2 - bwx/2;
+    if(ui_button(bxx, by+3, bwx, T(S_RESUME), 10)){ g_state = ST_PLAY; }
+    if(ui_button(bxx, by+7, bwx, T(S_SAVE_QUIT), 11)){
+        if(do_save()) show_feedback(T(S_SAVE_OK));
+        else show_feedback(T(S_SAVE_FAIL));
+        g_state = ST_TITLE;
+    }
+    if(ui_button(bxx, by+11, bwx, T(S_QUIT_NOSAVE), 12)){
+        g_state = ST_TITLE;
+    }
+}
+
+static void draw_options(void){
+    ce_clear(0);
+    ce_border((WCHAR)0x2593, 9);
+    int title_len = (g_lang == LANG_VI) ? (int)strlen(T(S_OPTIONS)) : (int)strlen(T(S_OPTIONS));
+    ce_text(SCREEN_W/2 - title_len/2, 4, T(S_OPTIONS), 14);
+
+    /* Ngon ngu hien tai */
+    ce_text(SCREEN_W/2-10, 12, T(S_LANG_LABEL), 11);
+    const char *cur = (g_lang == LANG_VI) ? T(S_LANG_VI) : T(S_LANG_EN);
+    ce_text(SCREEN_W/2-10, 14, cur, 14);
+
+    /* 2 nut: toggle ngon ngu + About */
+    if(ui_button(SCREEN_W/2-12, 18, 24, T(S_LANG_HINT), 13)) i18n_cycle();
+    if(ui_button(SCREEN_W/2-12, 24, 24, T(S_ABOUT), 11)){
+        g_prev_state = ST_OPTIONS;
+        g_state = ST_ABOUT;
+    }
+    if(ui_button(SCREEN_W/2-12, 30, 24, T(S_BACK), 10)){
+        g_state = g_prev_state;
+    }
+    ce_text(SCREEN_W/2-7, SCREEN_H-3, T(S_ESC_HINT), 8);
+    if(ce_keyPressed('L')) i18n_cycle();
+}
+
+static void draw_about(void){
+    ce_clear(0);
+    ce_border((WCHAR)0x2593, 9);
+    int title_len = (int)strlen(T(S_ABOUT));
+    ce_text(SCREEN_W/2 - title_len/2, 4, T(S_ABOUT), 14);
+
+    int len2 = (int)strlen(T(S_ABOUT_LINE1));
+    ce_text(SCREEN_W/2 - len2/2, 12, T(S_ABOUT_LINE1), 11);
+    int len3 = (int)strlen(T(S_ABOUT_LINE2));
+    ce_text(SCREEN_W/2 - len3/2, 15, T(S_ABOUT_LINE2), 8);
+    int len4 = (int)strlen(T(S_ABOUT_LINE3));
+    ce_text(SCREEN_W/2 - len4/2, 17, T(S_ABOUT_LINE3), 7);
+
+    ce_text(SCREEN_W/2-13, 21, T(S_VERSION), 13);
+
+    if(ui_button(SCREEN_W/2-8, 28, 16, T(S_BACK), 10)){
+        g_state = g_prev_state;
+    }
+    ce_text(SCREEN_W/2-7, SCREEN_H-3, T(S_ESC_HINT), 8);
 }
 
 /* ---------- Update ---------- */
 void update(float dt){
     g_frame++;
+    /* Fade feedback counter */
+    if(g_feedback_frames > 0) g_feedback_frames--;
+
     if(ce_keyPressed(VK_ESCAPE)){
-        if(g_state == ST_PLAY){ g_state = ST_TITLE; }
-        else if(g_state == ST_TITLE){ ce_quit(); }
-        else { g_state = ST_TITLE; }
+        switch(g_state){
+            case ST_PLAY:    g_state = ST_PAUSE;  break;  /* pause, KHONG mat game */
+            case ST_PAUSE:   g_state = ST_PLAY;   break;
+            case ST_OPTIONS: g_state = g_prev_state; break;  /* quay lai title hoac pause */
+            case ST_ABOUT:   g_state = g_prev_state; break;
+            case ST_CLASS:   g_state = ST_TITLE;  break;
+            case ST_DEAD:    g_state = ST_TITLE;  break;
+            case ST_TITLE:   ce_quit();           break;
+        }
         return;
     }
 
@@ -365,7 +564,6 @@ void update(float dt){
             break;
         case ST_CLASS:
             draw_class();
-            if(ce_keyPressed(VK_ESCAPE)) g_state = ST_TITLE;
             break;
         case ST_PLAY: {
             ce_clear(0);
@@ -438,14 +636,40 @@ void update(float dt){
             }
             break;
         }
+        case ST_PAUSE: {
+            /* Ve lai man hinh play (KHONG input) roi overlay pause len tren */
+            fov_compute(g_floor.map, g_player_x, g_player_y, 8);
+            draw_map(2, 2);
+            int sbx = 2 + g_floor.map->w + 1;
+            for(int y=0;y<SCREEN_H;y++) ce_putc(sbx, y, (WCHAR)0x2551, 8);
+            draw_sidebar(sbx);
+            const char *lines[6];
+            for(int i=0;i<g_log_n;i++) lines[i]=g_log[i];
+            ui_log(2, 2 + g_floor.map->h + 1, lines, g_log_n, 6);
+            /* Overlay pause */
+            draw_pause();
+            break;
+        }
+        case ST_OPTIONS:
+            draw_options();
+            break;
+        case ST_ABOUT:
+            draw_about();
+            break;
         case ST_DEAD: {
             ce_clear(4);
-            ce_text(SCREEN_W/2-5, 20, "YOU DIED", 12);
+            int dl = (int)strlen(T(S_YOU_DIED));
+            ce_text(SCREEN_W/2 - dl/2, 20, T(S_YOU_DIED), 12);
             char dbuf[80];
             int pxp = g_all[0].xp;
-            sprintf(dbuf, "Reached depth %d, level %d, %d XP", g_depth, g_level, pxp);
-            ce_text(SCREEN_W/2-20, 24, dbuf, 14);
-            ce_text(SCREEN_W/2-9, 28, "R: restart | ESC: menu", 8);
+            /* Hien depth/level/xp (dung format rieng de tranh nested %s chua %d) */
+            sprintf(dbuf, "%s %d - %s %d - %d XP",
+                    (g_lang==LANG_VI)?"Tang":"Depth", g_depth,
+                    (g_lang==LANG_VI)?"Cap":"Lvl", g_level, pxp);
+            int dlen = (int)strlen(dbuf);
+            ce_text(SCREEN_W/2 - dlen/2, 24, dbuf, 14);
+            int rh = (int)strlen(T(S_RESTART_HINT));
+            ce_text(SCREEN_W/2 - rh/2, 28, T(S_RESTART_HINT), 8);
             if(ce_keyPressed('R')) g_state = ST_TITLE;
             break;
         }

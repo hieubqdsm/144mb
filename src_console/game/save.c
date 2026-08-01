@@ -6,7 +6,7 @@
 #include <string.h>
 
 #define SAVE_MAGIC 0x52414745   /* "GAME" */
-#define SAVE_VERSION 1
+#define SAVE_VERSION 2   /* v2: + class_idx, + rng_state */
 
 int save_game(const char *path, const SaveData *data){
     HANDLE h = CreateFileA(path, GENERIC_WRITE, 0, NULL,
@@ -41,4 +41,15 @@ int load_game(const char *path, SaveData *data){
 int save_exists(const char *path){
     DWORD attr = GetFileAttributesA(path);
     return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+/* ---------- Quick save/load (default path) ---------- */
+int save_quick(const SaveData *data){
+    return save_game(SAVE_PATH, data);
+}
+int load_quick(SaveData *data){
+    return load_game(SAVE_PATH, data);
+}
+int save_quick_exists(void){
+    return save_exists(SAVE_PATH);
 }

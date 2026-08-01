@@ -221,8 +221,13 @@ void ce_sphere(int cx, int cy, int r, int baseCol, int hlCol, float aspect){
 }
 
 int ce_text(int x, int y, const char *s, int fr){
-    int i=0;
-    for(; s[i]; i++) ce_putc(x+i, y, (WCHAR)(unsigned char)s[i], fr);
+    /* UTF-8 -> UTF-16 (cho tieng Viet co dau). Chuoi ASCII van chay dung.
+       Buffer [256] du cho moi chuoi UI; chuoi dai hon bi cat. */
+    WCHAR wbuf[256];
+    int n = MultiByteToWideChar(CP_UTF8, 0, s, -1, wbuf, 256);
+    if(n <= 0) return 0;
+    int i = 0;
+    for(; wbuf[i]; i++) ce_putc(x+i, y, wbuf[i], fr);
     return i;
 }
 int ce_text_w(int x, int y, const WCHAR *s, int fr){
