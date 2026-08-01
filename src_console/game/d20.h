@@ -24,4 +24,15 @@ D20Result d20_roll(int mod, RollMode mode, RNG *rng);
 /* Roll damage tu DiceFormula. crit=1 -> double so dice (khong double mod). */
 int d20_roll_damage(DiceFormula f, int crit, RNG *rng);
 
+/* Roll damage tra CHI TIET tung die (de hien dice rolls).
+   rolls[] nhan gia tri tung die, tra ve so luong die. total = tong. */
+typedef struct {
+    int rolls[32];   /* gia tri tung die (vd 5, 3, 6) */
+    int n_rolls;     /* so die da roll */
+    int mod;         /* modifier (+2, +3) */
+    int total;       /* tong = sum(rolls) + mod */
+    int crit;        /* 1 = crit (double dice) */
+} DamageDetail;
+DamageDetail d20_roll_damage_detail(DiceFormula f, int crit, RNG *rng);
+
 #endif /* CE_D20_H */
