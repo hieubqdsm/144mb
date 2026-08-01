@@ -1,14 +1,14 @@
 @echo off
-REM Build full RPG (engine + game + data modules)
+REM Build ASCII Dungeon Crawler RPG (GDI renderer, WINDOWS subsystem)
 call "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat" >nul
 set OUTDIR=build
 if not exist %OUTDIR% mkdir %OUTDIR%
 
-echo === Build ASCII Dungeon Crawler RPG ===
+echo === Build RPG (GDI renderer) ===
 cl /nologo /MT /O2 /utf-8 /Fe:%OUTDIR%\rpg.exe ^
    /I src_console ^
    /DSCREEN_W=100 /DSCREEN_H=50 ^
-   src_console\engine\console.c ^
+   src_console\engine\gdi_renderer.c ^
    src_console\engine\rng.c ^
    src_console\engine\map.c ^
    src_console\engine\fov.c ^
@@ -28,8 +28,8 @@ cl /nologo /MT /O2 /utf-8 /Fe:%OUTDIR%\rpg.exe ^
    src_console\data\items.c ^
    src_console\data\spells.c ^
    src_console\game\rpg_main.c ^
-   /link /SUBSYSTEM:CONSOLE ^
-   user32.lib kernel32.lib winmm.lib legacy_stdio_definitions.lib
+   /link /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup ^
+   gdi32.lib user32.lib kernel32.lib winmm.lib legacy_stdio_definitions.lib
 
 if errorlevel 1 (echo [LOI] Build that bai & exit /b 1)
 echo.
