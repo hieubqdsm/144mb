@@ -2,6 +2,7 @@
    ACTOR - Implementation
    ===================================================================== */
 #include "actor.h"
+#include "../engine/rng.h"
 #include <string.h>
 
 int actor_ability_mod(int score){
@@ -84,4 +85,63 @@ uint16_t actor_glyph(const Actor *a){
 }
 int actor_color(const Actor *a){
     return a->type ? a->type->glyph_color : 7;
+}
+
+int actor_effective_ac(const Actor *a, int ac_bonus){
+    int ac = a->type ? a->type->ac : 10;
+    return ac + ac_bonus;
+}
+
+void actor_short_rest(Actor *a){
+    /* Heal 1/4 max HP (5e: Hit Dice). Clear short-duration conditions. */
+    if(actor_is_dead(a)) return;
+    int heal = a->max_hp / 4;
+    actor_heal(a, heal);
+}
+
+void actor_long_rest(Actor *a){
+    /* Full heal, clear all conditions (5e long rest). */
+    if(actor_is_dead(a)) return;
+    a->hp = a->max_hp;
+    a->conditions = COND_NONE;
+    a->flags &= ~EF_UNCONSCIOUS;
+}
+
+int actor_can_act(const Actor *a, EconomySlot slot){
+    switch(slot){
+        case ECON_ACTION:    return !a->action_used;
+        case ECON_BONUS:     return !a->bonus_used;
+        case ECON_REACTION:  return !a->reaction_used;
+        case ECON_MOVE:      return a->move_left > 0;
+    }
+    return 0;
+}
+
+void actor_consume(Actor *a, EconomySlot slot){
+    switch(slot){
+        case ECON_ACTION:    a->action_used = 1; break;
+        case ECON_BONUS:     a->bonus_used = 1; break;
+        case ECON_REACTION:  a->reaction_used = 1; break;
+        case ECON_MOVE:      if(a->move_left > 0) a->move_left--; break;
+    }
+}
+
+void actor_death_save(Actor *a, RNG *rng, DeathSaves *ds){
+    /* 5e: d20. 10+ = success, <10 = fail. nat20 = 2 successes, nat1 = 2 fails. */
+    (void)a;
+    int roll = rng_range(rng, 1, 20);
+    if(roll == 20){ ds->successes += 2; }
+    else if(roll == 1){ ds->failures += 2; }
+    else if(roll >= 10){ ds->successes += 1; }
+    else { ds->failures += 1; }
+    if(ds->successes >= 3){ ds->stable = 1; ds->successes = 3; }
+    if(ds->failures >= 3){
+        ds->failures = 3;
+        a->flags |= EF_DEAD;   /* 3 fail = death */
+    }
+}
+
+int actor_is_dying(const Actor *a){
+    /* Dying = HP 0 but death saves chua 3 fail (not fully dead yet) */
+    return (a->hp == 0) && !(a->flags & EF_DEAD);
 }

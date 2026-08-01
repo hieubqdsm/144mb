@@ -19,11 +19,16 @@ typedef struct {
 
 /* Source attack target bang MonsterAction.
    mod_to_hit = bonus cuong击 (STR/DEX mod + proficiency).
+   target_ac = AC thuc te cua target (base + armor + shield + condition).
    advantage = advantage on attack roll. */
 AtkResult combat_resolve_attack(const MonsterAction *action, int mod_to_hit,
-                                const Actor *target, RollMode mode, RNG *rng);
+                                int target_ac, RollMode mode, RNG *rng);
 
 /* Ap dung damage vao target (giam HP, set DEAD). */
 void combat_apply_damage(Actor *target, int damage);
+
+/* Concentration check: khi actor dang concentrate mau damage, phai save
+   CON DC = max(10, dmg/2). Tra ve 1 neu mat concentration. */
+int combat_concentration_check(Actor *caster, int damage, RNG *rng);
 
 #endif /* CE_COMBAT_H */

@@ -90,3 +90,22 @@ void map_mark_visible(Map *m, int x, int y){
     m->visible[i] = 1;
     m->seen[i] = 1;   /* once seen, stays seen (fog of war) */
 }
+
+int map_has_los(const Map *m, int x0, int y0, int x1, int y1){
+    /* Bresenham line. Dung lai neu gap tile khong transparent.
+       Skip diem xuat phat, kiem tra cac diem giua. */
+    int dx = abs(x1-x0), sx = x0<x1 ? 1 : -1;
+    int dy = -abs(y1-y0), sy = y0<y1 ? 1 : -1;
+    int err = dx + dy, e2;
+    int cx = x0, cy = y0;
+    for(;;){
+        if(cx == x1 && cy == y1) return 1;   /* den dich = thay */
+        /* Kiem tra tile hien tai (bo qua diem xuat phat) */
+        if(!(cx == x0 && cy == y0)){
+            if(!map_transparent(m, cx, cy)) return 0;   /* bi chan */
+        }
+        e2 = 2 * err;
+        if(e2 >= dy){ err += dy; cx += sx; }
+        if(e2 <= dx){ err += dx; cy += sy; }
+    }
+}

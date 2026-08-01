@@ -4,6 +4,7 @@
 #include "ai.h"
 #include "actor.h"
 #include "combat.h"
+#include "conditions.h"
 #include "d20.h"
 #include "../engine/rng.h"
 #include "../engine/path.h"
@@ -34,7 +35,8 @@ void ai_melee_chaser(Actor *self, Actor *all, int n, void (*log)(const char*)){
     if(dx <= 1 && dy <= 1){
         const MonsterAction *atk = &self->type->actions[0];
         int mod = actor_ability_mod(self->type->scores[AB_STR]);
-        AtkResult r = combat_resolve_attack(atk, mod, target, ROLL_NORMAL, &g_r);
+        int target_ac = actor_effective_ac(target, cond_ac_bonus(target));
+        AtkResult r = combat_resolve_attack(atk, mod, target_ac, ROLL_NORMAL, &g_r);
         char buf[80];
         if(r.fumble){
             snprintf(buf, sizeof(buf), "%s tan cong hut (NAT 1).", self->type->name);
@@ -51,27 +53,30 @@ void ai_melee_chaser(Actor *self, Actor *all, int n, void (*log)(const char*)){
         return;
     }
 
-    /* Di chuyen 1 buoc gan target (greedy) */
-    if(self->move_left <= 0){ log("(het move)"); return; }
-    int mx = 0, my = 0;
-    if(dx > dy){
-        mx = (target->x > self->x) ? 1 : -1;
-    } else if(dy > 0){
-        my = (target->y > self->y) ? 1 : -1;
-    } else if(dx > 0){
-        mx = (target->x > self->x) ? 1 : -1;
-    }
-    /* Kiem tra khong di len ô da co monster khac */
-    int nx = self->x + mx, ny = self->y + my;
-    for(int i = 0; i < n; i++){
-        if(&all[i] != self && all[i].x == nx && all[i].y == ny && !actor_is_dead(&all[i])){
-            /* ô da co nguoi -> dung im */
-            snprintf((char[]){0}, 1, "");
-            return;
+    /* Di chuyen gan target cho den khi adjacent HOAC het move_left (speed).
+       Wolf speed=8 se di 8 ô/luot, Zombie speed=4 chi 4 ô. */
+    while(self->move_left > 0 && (abs(self->x-target->x) > 1 || abs(self->y-target->y) > 1)){
+        int mx = 0, my = 0;
+        int ddx = abs(self->x - target->x), ddy = abs(self->y - target->y);
+        if(ddx > ddy){
+            mx = (target->x > self->x) ? 1 : -1;
+        } else if(ddy > 0){
+            my = (target->y > self->y) ? 1 : -1;
+        } else if(ddx > 0){
+            mx = (target->x > self->x) ? 1 : -1;
         }
+        /* Kiem tra khong di len ô da co monster khac */
+        int nx = self->x + mx, ny = self->y + my;
+        int blocked = 0;
+        for(int i = 0; i < n; i++){
+            if(&all[i] != self && all[i].x == nx && all[i].y == ny && !actor_is_dead(&all[i])){
+                blocked = 1; break;
+            }
+        }
+        if(blocked) break;
+        self->x = (int8_t)nx; self->y = (int8_t)ny;
+        self->move_left--;
     }
-    self->x = (int8_t)nx; self->y = (int8_t)ny;
-    self->move_left--;
 }
 
 /* Helper: tim target player gan nhat */
@@ -115,7 +120,8 @@ static void do_attack(Actor *self, Actor *target, int action_idx, void (*log)(co
     int is_ranged = (atk->range_max > 0);
     int score = self->type->scores[is_ranged ? AB_DEX : AB_STR];
     int mod = actor_ability_mod(score);
-    AtkResult r = combat_resolve_attack(atk, mod, target, ROLL_NORMAL, &g_r);
+    int target_ac = actor_effective_ac(target, cond_ac_bonus(target));
+    AtkResult r = combat_resolve_attack(atk, mod, target_ac, ROLL_NORMAL, &g_r);
     char buf[96];
     if(r.fumble){
         snprintf(buf, sizeof(buf), "%s tan cong hut (NAT 1).", self->type->name);

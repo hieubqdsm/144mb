@@ -12,10 +12,13 @@ typedef enum {
     SP_ATK_RANGED,      /* fire bolt: spell atk vs AC */
     SP_SAVE_HALF,       /* fireball: save for half */
     SP_SAVE_NEGATE,     /* hold person: save or nothing */
-    SP_BUFF_AC,         /* mage armor: +AC */
+    SP_BUFF_AC,         /* mage armor: +AC (concentration) */
     SP_SHIELD,          /* shield: reaction +5 AC */
     SP_HEAL,            /* cure wounds */
     SP_MAGIC_MISSILE,   /* auto-hit, no save */
+    SP_POISON,          /* poison: save CON neu fail -> DOT poison */
+    SP_STUN,            /* stun: save CON neu fail -> stunned condition */
+    SP_DEBUFF,          /* debuff: save negates, gan condition */
 } SpellKind;
 
 typedef struct {
@@ -37,5 +40,7 @@ extern const int N_SPELLS;
 #define SPELL_FIREBALL     2
 #define SPELL_MAGE_ARMOR   3
 #define SPELL_CURE_WOUNDS  4
+#define SPELL_POISON_SPRAY 5
+#define SPELL_HOLD_PERSON  6
 
 #endif /* CE_SPELLS_H */

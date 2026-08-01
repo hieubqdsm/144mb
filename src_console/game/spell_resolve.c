@@ -80,6 +80,59 @@ int spell_cast(int spell_id, Actor *caster, Actor *target,
                      target->hp, target->max_hp);
             break;
         }
+        case SP_POISON: {
+            /* Save CON neu fail -> poison DOT + initial damage */
+            int dmg = d20_roll_damage(s->damage, 0, rng);
+            if(s->save != SAVE_NONE){
+                int score = target->type->scores[s->save - SAVE_STR];
+                int mod = actor_ability_mod(score);
+                D20Result r = d20_roll(mod, ROLL_NORMAL, rng);
+                if(r.total >= 13){   /* DC 13 */
+                    snprintf(log_buf, log_size, "%s cast %s: %s save (DC13), khong bi poison.",
+                             caster->type->name, s->name, target->type->name);
+                    return 1;
+                }
+            }
+            combat_apply_damage(target, dmg);
+            /* Them poison DOT effect (1d4/turn, 10 rounds) */
+            Effect pe = {0};
+            pe.id = spell_id + 100;
+            pe.condition = COND_POISONED;
+            pe.rounds_left = 10;
+            pe.dmg_per_turn = 3;   /* ~1d4 poison/turn */
+            pe.dmg_type = DMG_POISON;
+            cond_add(target, pe);
+            snprintf(log_buf, log_size, "%s cast %s: %s bi POISONED (%d dmg + DOT 10 rounds).",
+                     caster->type->name, s->name, target->type->name, dmg);
+            break;
+        }
+        case SP_STUN: {
+            /* Save neu fail -> stunned (mất turn) */
+            if(s->save != SAVE_NONE){
+                int score = target->type->scores[s->save - SAVE_STR];
+                int mod = actor_ability_mod(score);
+                D20Result r = d20_roll(mod, ROLL_NORMAL, rng);
+                if(r.total >= 13){
+                    snprintf(log_buf, log_size, "%s cast %s: %s save (DC13).",
+                             caster->type->name, s->name, target->type->name);
+                    return 1;
+                }
+            }
+            Effect se = {0};
+            se.id = spell_id + 100;
+            se.condition = COND_STUNNED;
+            se.rounds_left = 3;    /* save moi turn de thoat */
+            se.save_stat = (Ability)s->save;
+            se.save_dc = 13;
+            cond_add(target, se);
+            snprintf(log_buf, log_size, "%s cast %s: %s bi STUNNED (save 13 de thoat).",
+                     caster->type->name, s->name, target->type->name);
+            break;
+        }
+        case SP_DEBUFF:
+            /* Generic: save negates, apply condition */
+            snprintf(log_buf, log_size, "%s cast %s (debuff).", caster->type->name, s->name);
+            break;
         default:
             snprintf(log_buf, log_size, "%s cast %s (chua ho tro).", caster->type->name, s->name);
             return 0;

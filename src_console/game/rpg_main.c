@@ -212,7 +212,8 @@ static void try_move(int dx, int dy){
         /* Bump = attack */
         const MonsterAction *atk = &get_player()->type->actions[0];
         int mod = actor_ability_mod(get_player()->type->scores[AB_STR]) + inv_total_atk_bonus(&g_inv);
-        AtkResult r = combat_resolve_attack(atk, mod, m, ROLL_NORMAL, &g_r);
+        int target_ac = actor_effective_ac(m, cond_ac_bonus(m));
+        AtkResult r = combat_resolve_attack(atk, mod, target_ac, ROLL_NORMAL, &g_r);
         char buf[80];
         if(r.fumble){ sprintf(buf, "Ban tan cong %s: NAT 1 (hut).", m->type->name); sfx_miss(); }
         else if(r.crit){

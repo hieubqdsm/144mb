@@ -77,5 +77,31 @@ const SpellDef SPELLS[] = {
         .glyph       = '+',
         .glyph_color = CE_GREEN,
     },
+
+    /* [SPELL_POISON_SPRAY] - cantrip, save CON neu fail -> poison DOT */
+    [SPELL_POISON_SPRAY] = {
+        .name        = "Poison Spray",
+        .level       = 0,                               /* cantrip */
+        .kind        = SP_POISON,
+        .damage      = DICE(1, 12, 0),                  /* 1d12 ngay + DOT */
+        .dmg_type    = DMG_POISON,
+        .save        = SAVE_CON,
+        .ac_bonus    = 0,
+        .glyph       = '#',
+        .glyph_color = CE_DGREEN,
+    },
+
+    /* [SPELL_HOLD_PERSON] - lv2, save WIS neu fail -> stunned (mất turn) */
+    [SPELL_HOLD_PERSON] = {
+        .name        = "Hold Person",
+        .level       = 2,
+        .kind        = SP_STUN,
+        .damage      = DICE(0, 1, 0),
+        .dmg_type    = DMG_FORCE,
+        .save        = SAVE_WIS,
+        .ac_bonus    = 0,
+        .glyph       = '*',
+        .glyph_color = CE_CYAN,
+    },
 };
 const int N_SPELLS = (int)(sizeof(SPELLS)/sizeof(SPELLS[0]));

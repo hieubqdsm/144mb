@@ -63,4 +63,9 @@ void map_clear_visible(Map *m);
 /* Danh dau (x,y) da seen + visible (goi tu FOV algorithm). */
 void map_mark_visible(Map *m, int x, int y);
 
+/* Line of Sight: kiem tra (x0,y0) co nhin thay (x1,y1) khong.
+   Dung Bresenham line, dung lai neu gap tile khong transparent.
+   Tra ve 1 neu thay, 0 neu bi chan. */
+int map_has_los(const Map *m, int x0, int y0, int x1, int y1);
+
 #endif /* CE_MAP_H */
