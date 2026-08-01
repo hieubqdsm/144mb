@@ -11,4 +11,10 @@
    target = actor dau tien co team != self->team (don gian). */
 void ai_melee_chaser(Actor *self, Actor *all, int n, void (*log)(const char*));
 
+/* AI ranged: ban cung neu xa, chay nguoi choi neu qua gan, nguoc lai di chuyen. */
+void ai_ranged(Actor *self, Actor *all, int n, void (*log)(const char*));
+
+/* AI dragon: tan cong phuc tap hon (multi-attack, hon lo melee). */
+void ai_boss(Actor *self, Actor *all, int n, void (*log)(const char*));
+
 #endif /* CE_AI_H */

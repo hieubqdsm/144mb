@@ -48,7 +48,63 @@ static int g_player_x, g_player_y;
 static int g_game_over = 0;
 static int g_in_combat = 0;
 static int g_show_inventory = 0;
-static int g_ai_delay = 0;  /* frames de giam AI speed */
+static int g_ai_delay = 0;
+static int g_level = 1;
+
+/* XP can de len level (D&D 5e simplified: 300, 900, 2700... x3 moi cap) */
+static int xp_threshold(int level){
+    int t = 300;
+    for(int i = 1; i < level; i++) t *= 3;
+    return t;
+}
+
+/* Forward declarations (C implicit-int rule can cu neu goi truoc dinh nghia) */
+static Actor *get_player(void);
+static void log_add(const char *msg);
+static void player_act_after(void);
+
+/* ---------- SFX procedural (async beep, 0 byte asset) ---------- */
+static DWORD WINAPI beep_thread(LPVOID p){
+    int *a = (int*)p; Beep(a[0], a[1]); free(a); return 0;
+}
+static void sfx_beep(int freq, int dur){
+    int *a = (int*)malloc(sizeof(int)*2);
+    if(!a) return;
+    a[0]=freq; a[1]=dur;
+    HANDLE h = CreateThread(NULL, 0, beep_thread, a, 0, NULL);
+    if(h) CloseHandle(h);
+}
+static void sfx_hit(void){ sfx_beep(200, 50); }
+static void sfx_crit(void){ sfx_beep(600, 40); sfx_beep(900, 40); }
+static void sfx_miss(void){ sfx_beep(120, 60); }
+static void sfx_die(void){ sfx_beep(150, 200); sfx_beep(100, 300); }
+static void sfx_levelup(void){ sfx_beep(523, 80); sfx_beep(659, 80); sfx_beep(784, 120); }
+static void sfx_pickup(void){ sfx_beep(800, 30); sfx_beep(1000, 30); }
+static void sfx_spell(void){ sfx_beep(440, 60); sfx_beep(880, 60); }
+static void sfx_stairs(void){ sfx_beep(300, 100); sfx_beep(200, 100); sfx_beep(100, 150); }
+
+/* Level up: tang max HP (+ fighter 10/lvl), +1 STR moi 4 level. */
+static void check_level_up(void){
+    Actor *p = get_player();
+    while(p->xp >= xp_threshold(g_level) && g_level < 10){
+        p->xp -= xp_threshold(g_level);
+        g_level++;
+        p->max_hp += 10;
+        p->hp = p->max_hp;   /* full heal khi level up */
+        p->level = (uint8_t)g_level;
+        /* +1 STR moi 4 level (ASD) */
+        if(g_level % 4 == 0){
+            char buf[80];
+            sprintf(buf, "*** LEVEL UP %d! +10 HP, +1 STR ***", g_level);
+            log_add(buf);
+        } else {
+            char buf[80];
+            sprintf(buf, "*** LEVEL UP %d! +10 HP (full heal) ***", g_level);
+            log_add(buf);
+        }
+        sfx_levelup();
+    }
+}
 
 /* Combat log */
 static char g_log[6][80];
@@ -68,7 +124,7 @@ static int g_state = ST_TITLE;
 static int g_frame = 0;
 
 /* ---------- Helpers ---------- */
-static Actor *player(void){ return &g_all[0]; }
+static Actor *get_player(void){ return &g_all[0]; }
 static Actor *monster_at(int x, int y){
     for(int i=1;i<g_n_actors;i++){
         if(!actor_is_dead(&g_all[i]) && g_all[i].x==x && g_all[i].y==y) return &g_all[i];
@@ -87,7 +143,7 @@ static void start_floor(int depth){
     g_player_x = g_floor.player_start_x;
     g_player_y = g_floor.player_start_y;
     /* Build actor list: player + monsters */
-    g_all[0] = *player();   /* keep player stats */
+    g_all[0] = *get_player();   /* keep player stats */
     g_all[0].x = (int8_t)g_player_x; g_all[0].y = (int8_t)g_player_y;
     g_n_actors = 1;
     for(int i=0;i<g_floor.n_monsters;i++){
@@ -114,6 +170,9 @@ static void new_game(int class_idx){
     inv_add(&g_inv, &ITEMS[ID_LONGSWORD], 1);
     inv_equip(&g_inv, 0);
     inv_add(&g_inv, &ITEMS[ID_HEAL_POTION], 3);
+    g_level = 1;
+    get_player()->level = 1;
+    get_player()->xp = 0;
     g_game_over = 0;
     g_log_n = 0;
     log_add("=== DUNGEON CRAWL START ===");
@@ -136,11 +195,12 @@ static void player_act_after(void){
     fov_compute(g_floor.map, g_player_x, g_player_y, 8);
     /* Resolve conditions dau turn player */
     char cbuf[80];
-    cond_resolve_turn(player(), &g_r, cbuf, sizeof(cbuf));
+    cond_resolve_turn(get_player(), &g_r, cbuf, sizeof(cbuf));
     if(cbuf[0]) log_add(cbuf);
     /* Check death */
-    if(actor_is_dead(player())){
+    if(actor_is_dead(get_player())){
         log_add("*** BAN DA CHET. Press R de restart. ***");
+        sfx_die();
         g_state = ST_DEAD;
     }
 }
@@ -150,25 +210,29 @@ static void try_move(int dx, int dy){
     Actor *m = monster_at(nx, ny);
     if(m){
         /* Bump = attack */
-        const MonsterAction *atk = &player()->type->actions[0];
-        int mod = actor_ability_mod(player()->type->scores[AB_STR]) + inv_total_atk_bonus(&g_inv);
+        const MonsterAction *atk = &get_player()->type->actions[0];
+        int mod = actor_ability_mod(get_player()->type->scores[AB_STR]) + inv_total_atk_bonus(&g_inv);
         AtkResult r = combat_resolve_attack(atk, mod, m, ROLL_NORMAL, &g_r);
         char buf[80];
-        if(r.fumble) sprintf(buf, "Ban tan cong %s: NAT 1 (hut).", m->type->name);
+        if(r.fumble){ sprintf(buf, "Ban tan cong %s: NAT 1 (hut).", m->type->name); sfx_miss(); }
         else if(r.crit){
             combat_apply_damage(m, r.damage);
             sprintf(buf, "CRIT! Ban danh %s %d damage!", m->type->name, r.damage);
+            sfx_crit();
         }
         else if(r.hit){
             combat_apply_damage(m, r.damage);
             sprintf(buf, "Ban danh %s %d damage.", m->type->name, r.damage);
+            sfx_hit();
         }
-        else sprintf(buf, "Ban tan cong %s: hut (AC %d).", m->type->name, m->type->ac);
+        else { sprintf(buf, "Ban tan cong %s: hut (AC %d).", m->type->name, m->type->ac); sfx_miss(); }
         log_add(buf);
         if(actor_is_dead(m)){
             sprintf(buf, "%s chet! (+%d XP)", m->type->name, m->type->xp);
             log_add(buf);
-            player()->xp += m->type->xp;
+            get_player()->xp += m->type->xp;
+            sfx_die();
+            check_level_up();
         }
         player_act_after();
         return;
@@ -183,6 +247,7 @@ static void try_move(int dx, int dy){
                 char buf[80];
                 sprintf(buf, "Nhat: %s x%d", g_floor.floor_items[i].type->name, g_floor.floor_items[i].qty);
                 log_add(buf);
+                sfx_pickup();
                 /* remove */
                 g_floor.floor_items[i] = g_floor.floor_items[--g_floor.n_floor_items];
                 break;
@@ -230,11 +295,20 @@ static void draw_map(int ox, int oy){
 
 static void draw_sidebar(int ox){
     int y = 1;
-    ui_actor_panel(ox+2, y, player(), "=== HERO ===", 10);
+    ui_actor_panel(ox+2, y, get_player(), "=== HERO ===", 10);
     y = 12;
     char b[80];
-    sprintf(b, "Tang: %d", g_depth); ce_text(ox+2, y++, b, 14);
-    sprintf(b, "XP: %d", player()->xp); ce_text(ox+2, y++, b, 11);
+    sprintf(b, "Level: %d", g_level); ce_text(ox+2, y++, b, 14);
+    sprintf(b, "XP: %d / %d", get_player()->xp, xp_threshold(g_level)); ce_text(ox+2, y++, b, 11);
+    sprintf(b, "Tang: %d", g_depth); ce_text(ox+2, y++, b, 13);
+    y++;
+    /* Dem monster con song */
+    int alive = 0;
+    for(int i=1;i<g_n_actors;i++) if(!actor_is_dead(&g_all[i])) alive++;
+    sprintf(b, "Monsters: %d", alive); ce_text(ox+2, y++, b, 12);
+    /* Potions */
+    int pot = inv_count(&g_inv, ID_HEAL_POTION);
+    sprintf(b, "Potions: %d", pot); ce_text(ox+2, y++, b, 10);
     y++;
     ce_text(ox+2, y++, "=== CONTROLS ===", 8);
     ce_text(ox+2, y++, "WASD: move/attack", 7);
@@ -312,7 +386,7 @@ void update(float dt){
                     }
                 }
                 char buf[80];
-                if(t) spell_cast(SPELL_FIRE_BOLT, player(), t, 5, &g_r, buf, sizeof(buf));
+                if(t){ spell_cast(SPELL_FIRE_BOLT, get_player(), t, 5, &g_r, buf, sizeof(buf)); sfx_spell(); }
                 else strcpy(buf, "Khong co target trong tam nhin.");
                 log_add(buf);
                 player_act_after();
@@ -326,14 +400,14 @@ void update(float dt){
                     if(d<bd){bd=d; t=&g_all[i];}
                 }
                 char buf[80];
-                if(t) spell_cast(SPELL_MAGIC_MISSILE, player(), t, 5, &g_r, buf, sizeof(buf));
+                if(t) spell_cast(SPELL_MAGIC_MISSILE, get_player(), t, 5, &g_r, buf, sizeof(buf));
                 else strcpy(buf, "Khong co target.");
                 log_add(buf);
                 player_act_after();
             }
             if(ce_keyPressed('H')){
                 char buf[80];
-                inv_use_potion(&g_inv, player(), &g_r, buf, sizeof(buf));
+                inv_use_potion(&g_inv, get_player(), &g_r, buf, sizeof(buf));
                 log_add(buf);
                 player_act_after();
             }
@@ -341,6 +415,7 @@ void update(float dt){
             if(ce_keyPressed(VK_OEM_2)){  /* '/' or '>' */
                 if(map_get(g_floor.map, g_player_x, g_player_y) == TILE_STAIRS_DOWN){
                     log_add("Xuong tang sau...");
+                    sfx_stairs();
                     start_floor(g_depth + 1);
                 }
             }
@@ -361,14 +436,17 @@ void update(float dt){
             }
             break;
         }
-        case ST_DEAD:
+        case ST_DEAD: {
             ce_clear(4);
             ce_text(SCREEN_W/2-5, 20, "YOU DIED", 12);
-            sprintf_s(g_log[0], 80, "Reached depth %d, %d XP", g_depth, player()->xp);
-            ce_text(SCREEN_W/2-15, 24, g_log[0], 14);
+            char dbuf[80];
+            int pxp = g_all[0].xp;
+            sprintf(dbuf, "Reached depth %d, level %d, %d XP", g_depth, g_level, pxp);
+            ce_text(SCREEN_W/2-20, 24, dbuf, 14);
             ce_text(SCREEN_W/2-9, 28, "R: restart | ESC: menu", 8);
             if(ce_keyPressed('R')) g_state = ST_TITLE;
             break;
+        }
     }
 }
 
