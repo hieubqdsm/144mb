@@ -9,7 +9,7 @@
 extern const MonsterType MONSTERS[];
 
 /* Number of monsters (compile-time cho array sizing) */
-#define N_MONSTERS 7
+#define N_MONSTERS 8
 
 /* IDs */
 #define ID_GOBLIN    0
@@ -19,5 +19,6 @@ extern const MonsterType MONSTERS[];
 #define ID_ORC       4
 #define ID_OGRE      5
 #define ID_DRAGON    6
+#define ID_ZOMBIE    7
 
 #endif /* CE_DATA_MONSTERS_H */

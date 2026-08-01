@@ -47,6 +47,11 @@ static const MonsterAction dragon_actions[] = {
     { "Fire Breath", 8, 0,0, {8,6,0}, DMG_FIRE },  /* cone, treated ranged */
 };
 
+/* --- Zombie (slow tanky undead) --- */
+static const MonsterAction zombie_actions[] = {
+    { "Slam", 3, 5,0, {1,6,1}, DMG_BLUDGEONING },
+};
+
 /* Monster table (const). */
 const MonsterType MONSTERS[N_MONSTERS] = {  /* N_MONSTERS = #define = 7 */
     /* [ID_GOBLIN] - CR 1/4 */
@@ -112,5 +117,14 @@ const MonsterType MONSTERS[N_MONSTERS] = {  /* N_MONSTERS = #define = 7 */
         .actions = dragon_actions, .n_actions = 2,
         .ai = ai_boss,
     },
+    /* [ID_ZOMBIE] - CR 1/4, slow undead tank */
+    {
+        .name = "Zombie", .size = 3, .type = 1, .ac = 8,
+        .hp_dice = {3,8,9}, .speed = 4,   /* cham (20ft), HP cao (3d8+9 ~ 22) */
+        .scores = { 13, 6, 16, 3, 6, 5 },
+        .cr = 1, .xp = 50, .glyph = 'z', .glyph_color = 2,  /* xanh la (undead) */
+        .actions = zombie_actions, .n_actions = 1,
+        .ai = ai_melee_chaser,
+    },
 };
-/* N_MONSTERS la #define trong monsters.h (= 7). */
+/* N_MONSTERS la #define trong monsters.h (= 8). */

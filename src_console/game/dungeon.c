@@ -41,8 +41,11 @@ void dungeon_generate(Floor *f, int depth, RNG *rng){
             else if(depth >= 5 && rng_chance(rng, 0.3f)) mid = ID_OGRE;
             else if(depth >= 3 && rng_chance(rng, 0.4f)) mid = ID_ORC;
             else {
-                int roll = rng_range(rng, 0, 2);
-                mid = (roll==0) ? ID_GOBLIN : (roll==1) ? ID_SKELETON : ID_WOLF;
+                int roll = rng_range(rng, 0, 3);
+                if(roll==0) mid = ID_GOBLIN;
+                else if(roll==1) mid = ID_SKELETON;
+                else if(roll==2) mid = ID_WOLF;
+                else mid = (depth >= 3) ? ID_ZOMBIE : ID_GOBLIN;  /* zombie depth 3+ */
             }
             f->monsters[f->n_monsters] = actor_spawn(&MONSTERS[mid], mx, my, TEAM_ENEMY, rng);
             f->n_monsters++;

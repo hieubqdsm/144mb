@@ -323,14 +323,15 @@ static void draw_sidebar(int ox){
 static void draw_title(void){
     ce_clear(1);
     ce_border((WCHAR)0x2593, 9);
-    ce_sprite(SCREEN_W/2-15, 6,
-        "  ██████╗  ██████╗ ██╗  ██╗    ███████╗███╗   ██╗\n"
-        "  ██╔══██╗██╔═══██╗╚██╗██╔╝    ██╔════╝████╗  ██║\n"
-        "  ██║  ██║██║   ██║ ╚███╔╝     █████╗  ██╔██╗ ██║\n"
-        "  ██║  ██║██║   ██║ ██╔██╗     ██╔══╝  ██║╚██╗██║\n"
-        "  ██████╔╝╚██████╔╝██╔╝ ██╗    ███████╗██║ ╚████║\n"
-        "  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝    ╚══════╝╚═╝  ╚═══╝", 12);
-    ce_text(SCREEN_W/2-10, 14, "ASCII DUNGEON CRAWLER", 8);
+    /* Title ASCII art dung ky tu thuong (tranh UTF-8 bug) */
+    ce_sprite(SCREEN_W/2-17, 6,
+        "  ####  ####  #   #  #####   ###    ####  #   #\n"
+        " #     #      ## ##  #        #    #      #   #\n"
+        " #     ####   # # #  ####     #    #      #####\n"
+        " #     #      #   #  #        #    #      #   #\n"
+        "  #### ####   #   #  #       ###    ####  #   #", 14);
+    ce_text(SCREEN_W/2-10, 14, "ASCII DUNGEON CRAWLER", 11);
+    ce_text(SCREEN_W/2-8, 16, "a 1.44MB roguelike", 8);
     if(ui_button(SCREEN_W/2-8, 22, 16, "> NEW GAME", 10)){
         g_state = ST_CLASS;
     }

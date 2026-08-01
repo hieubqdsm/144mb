@@ -7,6 +7,7 @@ if not exist %OUTDIR% mkdir %OUTDIR%
 echo === Build ASCII Dungeon Crawler RPG ===
 cl /nologo /MT /O2 /utf-8 /Fe:%OUTDIR%\rpg.exe ^
    /I src_console ^
+   /DSCREEN_W=100 /DSCREEN_H=50 ^
    src_console\engine\console.c ^
    src_console\engine\rng.c ^
    src_console\engine\map.c ^

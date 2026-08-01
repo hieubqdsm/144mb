@@ -40,10 +40,25 @@ int ce_init(void){
     SetConsoleWindowInfo(ce_out, TRUE, &ce_rect);
     SetConsoleActiveScreenBuffer(ce_out);
 
-    /* Font Consolas (co dinh) */
+    /* Auto-scale font theo do phan giai man hinh.
+       Do screen W*H cells vua khít ~85% man hinh (bo chut le). */
+    int scrW = GetSystemMetrics(SM_CXSCREEN);
+    int scrH = GetSystemMetrics(SM_CYSCREEN);
+    int fontW, fontH;
+    /* Tinh font vua man hinh: min(scrW/SCREEN_W, scrH/SCREEN_H) */
+    int maxW = scrW / SCREEN_W;
+    int maxH = (scrH - 60) / SCREEN_H;   /* tru taskbar */
+    int fit = (maxW < maxH) ? maxW : maxH;
+    if(fit < 6) fit = 6;
+    if(fit > 32) fit = 32;
+    fontW = fontH = fit;
+    if(fit > 28) fit = 28;   /* cap: toi da 28px */
+    fontW = fontH = fit;
+
+    /* Font Consolas, size da scale */
     CONSOLE_FONT_INFOEX cfi; ZeroMemory(&cfi, sizeof(cfi));
     cfi.cbSize = sizeof(cfi);
-    cfi.dwFontSize.X = FONT_W; cfi.dwFontSize.Y = FONT_H;
+    cfi.dwFontSize.X = (SHORT)fontW; cfi.dwFontSize.Y = (SHORT)fontH;
     cfi.FontWeight = FW_NORMAL;
     /* Copy font name "Consolas" (khai bao o dau block cho C90 compatible) */
     {
