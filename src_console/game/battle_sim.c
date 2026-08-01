@@ -160,6 +160,9 @@ static void print_hp_bar(const Actor *a){
 }
 
 int main(void){
+    /* UTF-8 output cho tieng Viet co dau */
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
     rng_seed(&g_r, (uint64_t)GetTickCount());
 
     /* Spawn: Hero (level 5 fighter, buff cho demo) vs Dragon (giam HP) */
@@ -169,12 +172,12 @@ int main(void){
     dragon.max_hp = 50; dragon.hp = 50;   /* giam HP de demo lau hon */
 
     printf("============================================================\n");
-    printf("  BATTLE SIMULATOR - D&D 5e Dice Rolls\n");
+    printf("  MÔ PHỎNG CHIẾN ĐẤU - D&D 5e Dice Rolls\n");
     printf("============================================================\n");
-    printf("  HERO   (Fighter Lv3): HP %d, AC %d, STR %d (%+d)\n",
+    printf("  ANH HÙNG   (Chiến binh):  HP %d, AC %d, SỨC MẠNH %d (%+d)\n",
            hero.hp, hero.type->ac, hero.type->scores[AB_STR],
            actor_ability_mod(hero.type->scores[AB_STR]));
-    printf("  DRAGON (Boss):       HP %d, AC %d\n\n",
+    printf("  RỒNG      (Trùm):        HP %d, AC %d\n\n",
            dragon.hp, dragon.type->ac);
 
     int round = 1;
@@ -222,13 +225,16 @@ int main(void){
 
     printf("============================================================\n");
     if(actor_is_dead(&dragon)){
-        printf("  HERO THANG! (Dragon down sau %d rounds)\n", round);
+        printf("  *** ANH HÙNG THẮNG! (Rồng gục sau %d hiệp) ***\n", round);
     } else {
-        printf("  DRAGON THANG! (Hero down sau %d rounds)\n", round);
+        printf("  *** RỒNG THẮNG! (Anh hùng gục sau %d hiệp) ***\n", round);
     }
     printf("============================================================\n");
-    printf("\nFinal state:\n");
+    printf("\nTrạng thái cuối:\n");
     print_hp_bar(&hero);
     print_hp_bar(&dragon);
+    printf("\n");
+    wait_key("Nhấn SPACE/ENTER để thoát...");
+    printf("\n");
     return 0;
 }
