@@ -19,8 +19,45 @@ struct Map;
 
 /* ---------- Dice formula ("2d6+2") ---------- */
 typedef struct { int8_t count; uint8_t sides; int8_t mod; } DiceFormula;
-/* Helper macro: DC(2,6,2) = 2d6+2 */
+/* Helper macro: DC(2,6,2) = 2d6+2 (kept for legacy, prefer DICE) */
 #define DC(c,s,m) ((DiceFormula){(c),(s),(m)})
+
+/* =====================================================================
+   DESIGN DSL - Macros giup data tables doc de, tu giai thich.
+   Dung trong data/monsters.c, items.c, spells.c.
+   ===================================================================== */
+
+/* Dice: DICE(count, sides, mod). Vd DICE(2,6,2) = "2d6+2".
+   DUNG NAY thay cho {2,6,2} thuc tu (de biet count/sides/mod).
+   LUU Y: phai dung dang {c,s,m} (KHONG compound literal) de compile-time const.
+   Cach dung: .damage = DICE(2,6,2),  (macro mo ra thanh {2,6,2}) */
+#define DICE(count, sides, mod) {(count),(sides),(mod)}
+
+/* Stats: chi so ky nang. scores phai la mang 6 phan tu.
+   Thay {8,14,10,10,8,8} bang macro de doc. Vd:
+     .scores = STATS(STR(8), DEX(14), CON(10), INT(10), WIS(8), CHA(8))
+   - Day la gia tri don gian nhat. */
+#define STR(v) (v)
+#define DEX(v) (v)
+#define CON(v) (v)
+#define INT(v) (v)
+#define WIS(v) (v)
+#define CHA(v) (v)
+#define STATS(s,d,c,i,w,ch) {(s),(d),(c),(i),(w),(ch)}
+
+/* Challenge Rating: CR duoc luu x4 (0.25 -> 1, 0.5 -> 2, 1 -> 4, 2 -> 8).
+   Macro CR(0.25) = 1, CR(2) = 8. De doc hon so nguyen thuc. */
+#define CR(rating) ((int)((rating) * 4))
+
+/* Size enum (de doc thay so 1-6) */
+enum {
+    SIZE_TINY = 1, SIZE_SMALL, SIZE_MEDIUM, SIZE_LARGE, SIZE_HUGE, SIZE_GARGANTUAN
+};
+
+/* Creature type enum */
+enum {
+    TYPE_HUMANOID = 0, TYPE_UNDEAD, TYPE_BEAST, TYPE_GIANT, TYPE_DRAGON
+};
 
 /* ---------- Monster attack/action (TYPE-level, shared) ---------- */
 struct MonsterAction {

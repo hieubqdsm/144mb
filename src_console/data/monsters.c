@@ -1,130 +1,242 @@
 /* =====================================================================
    DATA - Monster definitions (const compiled table, NetHack style).
-   Them monster = them 1 entry. Khong can parser, 0 byte runtime cost.
-   Stats lay tu D&D 5e SRD (goblin, skeleton, wolf, orc, ogre, dragon).
+   =====================================================================
+   CACH DOC (sau refactor - tu giai thich):
+     .hp_dice   = DICE(2,6,0)      <- "2d6+0"  (count, sides, mod)
+     .scores    = STATS(STR(8), DEX(14), CON(10), INT(10), WIS(8), CHA(8))
+     .cr        = CR(0.25)         <- Challenge Rating (luu x4 internal)
+     .size      = SIZE_SMALL       <- thay so 2
+     .type      = TYPE_HUMANOID    <- thay so 0
+     .glyph_color = CE_RED         <- thay so 12
+
+   THEM/SUA MONSTER = edit 1 entry nay. Khong can parser, 0 byte file.
+   Stats lay tu D&D 5e SRD.
    ===================================================================== */
 #include "monsters.h"
+#include "../structs.h"   /* DICE, STATS, CR, SIZE_*, TYPE_*, enum macros */
+#include "../engine/console.h"  /* CE_RED, CE_GREEN, ... */
 #include "../game/ai.h"
 
-/* --- Goblin attacks --- */
+/* =====================================================================
+   ATTACKS (mang const, shared giua instances cung loai)
+   Dung designated init de doc ro.
+   ===================================================================== */
+
+/* --- Goblin: Scimitar (melee) + Shortbow (ranged) --- */
 static const MonsterAction goblin_actions[] = {
-    { "Scimitar", 4, 5,0,  {1,6,2}, DMG_SLASHING },
-    { "Shortbow", 4, 80,320, {1,6,2}, DMG_PIERCING },
+    { .name="Scimitar", .atk_bonus=4, .reach=5,  .range_max=0,
+      .damage=DICE(1,6,2), .dmg_type=DMG_SLASHING },
+    { .name="Shortbow", .atk_bonus=4, .reach=80, .range_max=320,
+      .damage=DICE(1,6,2), .dmg_type=DMG_PIERCING },
 };
 
-/* --- Player attacks --- */
+/* --- Player: Longsword (melee) + Fire Bolt (cantrip ranged) --- */
 static const MonsterAction player_actions[] = {
-    { "Longsword", 5, 5,0, {1,8,3}, DMG_SLASHING },
-    { "Fire Bolt", 5, 120,0, {1,10,0}, DMG_FIRE },  /* cantrip backup */
+    { .name="Longsword", .atk_bonus=5, .reach=5,   .range_max=0,
+      .damage=DICE(1,8,3), .dmg_type=DMG_SLASHING },
+    { .name="Fire Bolt", .atk_bonus=5, .reach=120, .range_max=0,
+      .damage=DICE(1,10,0), .dmg_type=DMG_FIRE },
 };
 
-/* --- Skeleton attacks (ranged archer) --- */
+/* --- Skeleton: Shortsword (melee) + Shortbow (ranged archer) --- */
 static const MonsterAction skeleton_actions[] = {
-    { "Shortsword", 4, 5,0, {1,6,2}, DMG_PIERCING },
-    { "Shortbow", 4, 80,320, {1,6,2}, DMG_PIERCING },
+    { .name="Shortsword", .atk_bonus=4, .reach=5,  .range_max=0,
+      .damage=DICE(1,6,2), .dmg_type=DMG_PIERCING },
+    { .name="Shortbow",   .atk_bonus=4, .reach=80, .range_max=320,
+      .damage=DICE(1,6,2), .dmg_type=DMG_PIERCING },
 };
 
-/* --- Wolf (fast melee, pack hunter) --- */
+/* --- Wolf: Bite (fast melee, pack hunter) --- */
 static const MonsterAction wolf_actions[] = {
-    { "Bite", 4, 5,0, {1,6,2}, DMG_PIERCING },
+    { .name="Bite", .atk_bonus=4, .reach=5, .range_max=0,
+      .damage=DICE(1,6,2), .dmg_type=DMG_PIERCING },
 };
 
-/* --- Orc (brute melee) --- */
+/* --- Orc: Greataxe (1d12+3 nguy hiem!) + Javelin (ranged) --- */
 static const MonsterAction orc_actions[] = {
-    { "Greataxe", 5, 5,0, {1,12,3}, DMG_SLASHING },  /* 1d12+3 - nguy hiem! */
-    { "Javelin", 5, 30,120, {1,6,3}, DMG_PIERCING },
+    { .name="Greataxe", .atk_bonus=5, .reach=5,  .range_max=0,
+      .damage=DICE(1,12,3), .dmg_type=DMG_SLASHING },
+    { .name="Javelin",  .atk_bonus=5, .reach=30, .range_max=120,
+      .damage=DICE(1,6,3), .dmg_type=DMG_PIERCING },
 };
 
-/* --- Ogre (tanky heavy hitter) --- */
+/* --- Ogre: Greatclub (2d8+4 tanky) + Javelin --- */
 static const MonsterAction ogre_actions[] = {
-    { "Greatclub", 6, 5,0, {2,8,4}, DMG_BLUDGEONING },  /* 2d8+4 */
-    { "Javelin", 6, 30,120, {1,10,4}, DMG_PIERCING },
+    { .name="Greatclub", .atk_bonus=6, .reach=5,  .range_max=0,
+      .damage=DICE(2,8,4), .dmg_type=DMG_BLUDGEONING },
+    { .name="Javelin",   .atk_bonus=6, .reach=30, .range_max=120,
+      .damage=DICE(1,10,4), .dmg_type=DMG_PIERCING },
 };
 
-/* --- Dragon (boss, multiattack) --- */
+/* --- Dragon (boss): Bite + Fire Breath (multiattack 2/turn) --- */
 static const MonsterAction dragon_actions[] = {
-    { "Bite", 8, 5,0, {2,10,6}, DMG_PIERCING },
-    { "Fire Breath", 8, 0,0, {8,6,0}, DMG_FIRE },  /* cone, treated ranged */
+    { .name="Bite",        .atk_bonus=8, .reach=5, .range_max=0,
+      .damage=DICE(2,10,6), .dmg_type=DMG_PIERCING },
+    { .name="Fire Breath", .atk_bonus=8, .reach=0, .range_max=0,
+      .damage=DICE(8,6,0), .dmg_type=DMG_FIRE },
 };
 
-/* --- Zombie (slow tanky undead) --- */
+/* --- Zombie: Slam (slow, tanky undead) --- */
 static const MonsterAction zombie_actions[] = {
-    { "Slam", 3, 5,0, {1,6,1}, DMG_BLUDGEONING },
+    { .name="Slam", .atk_bonus=3, .reach=5, .range_max=0,
+      .damage=DICE(1,6,1), .dmg_type=DMG_BLUDGEONING },
 };
 
-/* Monster table (const). */
-const MonsterType MONSTERS[N_MONSTERS] = {  /* N_MONSTERS = #define = 7 */
-    /* [ID_GOBLIN] - CR 1/4 */
-    {
-        .name = "Goblin", .size = 2, .type = 0, .ac = 15,
-        .hp_dice = {2,6,0}, .speed = 6,
-        .scores = { 8, 14, 10, 10, 8, 8 },
-        .cr = 1, .xp = 50, .glyph = 'g', .glyph_color = 12,
-        .actions = goblin_actions, .n_actions = 2,
-        .ai = ai_melee_chaser,
+/* =====================================================================
+   MONSTER TABLE - moi entry = 1 monster type.
+   Design flow: copy 1 entry, doi ten/stats. Them ID o monsters.h.
+   ===================================================================== */
+const MonsterType MONSTERS[N_MONSTERS] = {
+
+    /* [ID_GOBLIN] - CR 1/4, melee chaser -------------------- */
+    [ID_GOBLIN] = {
+        .name       = "Goblin",
+        .size       = SIZE_SMALL,
+        .type       = TYPE_HUMANOID,
+        .ac         = 15,
+        .hp_dice    = DICE(2, 6, 0),                  /* 2d6 (avg 7) */
+        .speed      = 6,                               /* 30 ft/turn */
+        .scores     = STATS(STR(8),  DEX(14), CON(10),
+                            INT(10), WIS(8),  CHA(8)),
+        .cr         = CR(0.25),
+        .xp         = 50,
+        .glyph      = 'g',
+        .glyph_color= CE_RED,
+        .actions    = goblin_actions,
+        .n_actions  = 2,
+        .ai         = ai_melee_chaser,
     },
-    /* [ID_PLAYER] */
-    {
-        .name = "Hero", .size = 3, .type = 0, .ac = 16,
-        .hp_dice = {1,10,3}, .speed = 6,
-        .scores = { 16, 12, 14, 10, 10, 12 },
-        .cr = 0, .xp = 0, .glyph = '@', .glyph_color = 10,
-        .actions = player_actions, .n_actions = 2,
-        .ai = NULL,
+
+    /* [ID_PLAYER] - Hero template --------------------------- */
+    [ID_PLAYER] = {
+        .name       = "Hero",
+        .size       = SIZE_MEDIUM,
+        .type       = TYPE_HUMANOID,
+        .ac         = 16,
+        .hp_dice    = DICE(1, 10, 3),                  /* 1d10+3 (fighter) */
+        .speed      = 6,
+        .scores     = STATS(STR(16), DEX(12), CON(14),
+                            INT(10), WIS(10), CHA(12)),
+        .cr         = CR(0),
+        .xp         = 0,
+        .glyph      = '@',
+        .glyph_color= CE_GREEN,
+        .actions    = player_actions,
+        .n_actions  = 2,
+        .ai         = NULL,
     },
-    /* [ID_SKELETON] - CR 1/4, ranged archer */
-    {
-        .name = "Skeleton", .size = 3, .type = 1, .ac = 13,
-        .hp_dice = {2,8,2}, .speed = 6,
-        .scores = { 10, 14, 15, 6, 8, 5 },
-        .cr = 1, .xp = 50, .glyph = 's', .glyph_color = 7,
-        .actions = skeleton_actions, .n_actions = 2,
-        .ai = ai_ranged,
+
+    /* [ID_SKELETON] - CR 1/4, ranged archer ----------------- */
+    [ID_SKELETON] = {
+        .name       = "Skeleton",
+        .size       = SIZE_MEDIUM,
+        .type       = TYPE_UNDEAD,
+        .ac         = 13,
+        .hp_dice    = DICE(2, 8, 2),                   /* 2d8+2 (avg 11) */
+        .speed      = 6,
+        .scores     = STATS(STR(10), DEX(14), CON(15),
+                            INT(6),  WIS(8),  CHA(5)),
+        .cr         = CR(0.25),
+        .xp         = 50,
+        .glyph      = 's',
+        .glyph_color= CE_GREY,
+        .actions    = skeleton_actions,
+        .n_actions  = 2,
+        .ai         = ai_ranged,
     },
-    /* [ID_WOLF] - CR 1/4, fast melee */
-    {
-        .name = "Wolf", .size = 2, .type = 2, .ac = 13,
-        .hp_dice = {2,8,2}, .speed = 8,   /* nhanh hon */
-        .scores = { 12, 15, 12, 3, 12, 6 },
-        .cr = 1, .xp = 50, .glyph = 'w', .glyph_color = 8,
-        .actions = wolf_actions, .n_actions = 1,
-        .ai = ai_melee_chaser,
+
+    /* [ID_WOLF] - CR 1/4, fast melee ------------------------ */
+    [ID_WOLF] = {
+        .name       = "Wolf",
+        .size       = SIZE_MEDIUM,
+        .type       = TYPE_BEAST,
+        .ac         = 13,
+        .hp_dice    = DICE(2, 8, 2),                   /* 2d8+2 (avg 11) */
+        .speed      = 8,                               /* 40 ft - nhanh! */
+        .scores     = STATS(STR(12), DEX(15), CON(12),
+                            INT(3),  WIS(12), CHA(6)),
+        .cr         = CR(0.25),
+        .xp         = 50,
+        .glyph      = 'w',
+        .glyph_color= CE_DGREY,
+        .actions    = wolf_actions,
+        .n_actions  = 1,
+        .ai         = ai_melee_chaser,
     },
-    /* [ID_ORC] - CR 1/2, brute */
-    {
-        .name = "Orc", .size = 3, .type = 0, .ac = 13,
-        .hp_dice = {2,8,6}, .speed = 6,
-        .scores = { 16, 12, 16, 7, 11, 10 },
-        .cr = 2, .xp = 100, .glyph = 'o', .glyph_color = 12,
-        .actions = orc_actions, .n_actions = 2,
-        .ai = ai_melee_chaser,
+
+    /* [ID_ORC] - CR 1/2, brute melee ------------------------ */
+    [ID_ORC] = {
+        .name       = "Orc",
+        .size       = SIZE_MEDIUM,
+        .type       = TYPE_HUMANOID,
+        .ac         = 13,
+        .hp_dice    = DICE(2, 8, 6),                   /* 2d8+6 (avg 15) */
+        .speed      = 6,
+        .scores     = STATS(STR(16), DEX(12), CON(16),
+                            INT(7),  WIS(11), CHA(10)),
+        .cr         = CR(0.5),
+        .xp         = 100,
+        .glyph      = 'o',
+        .glyph_color= CE_RED,
+        .actions    = orc_actions,
+        .n_actions  = 2,
+        .ai         = ai_melee_chaser,
     },
-    /* [ID_OGRE] - CR 2, tanky heavy */
-    {
-        .name = "Ogre", .size = 4, .type = 3, .ac = 11,
-        .hp_dice = {7,10,7}, .speed = 6,
-        .scores = { 19, 8, 16, 5, 7, 7 },
-        .cr = 8, .xp = 450, .glyph = 'O', .glyph_color = 13,
-        .actions = ogre_actions, .n_actions = 2,
-        .ai = ai_melee_chaser,
+
+    /* [ID_OGRE] - CR 2, tanky heavy hitter ------------------ */
+    [ID_OGRE] = {
+        .name       = "Ogre",
+        .size       = SIZE_LARGE,
+        .type       = TYPE_GIANT,
+        .ac         = 11,
+        .hp_dice    = DICE(7, 10, 7),                  /* 7d10+7 (avg 45) */
+        .speed      = 6,
+        .scores     = STATS(STR(19), DEX(8),  CON(16),
+                            INT(5),  WIS(7),  CHA(7)),
+        .cr         = CR(2),
+        .xp         = 450,
+        .glyph      = 'O',
+        .glyph_color= CE_MAG,
+        .actions    = ogre_actions,
+        .n_actions  = 2,
+        .ai         = ai_melee_chaser,
     },
-    /* [ID_DRAGON] - boss, CR 5-ish */
-    {
-        .name = "Dragon", .size = 6, .type = 4, .ac = 17,
-        .hp_dice = {12,10,36}, .speed = 6,
-        .scores = { 23, 12, 19, 14, 13, 15 },
-        .cr = 20, .xp = 1800, .glyph = 'D', .glyph_color = 12,
-        .actions = dragon_actions, .n_actions = 2,
-        .ai = ai_boss,
+
+    /* [ID_DRAGON] - CR 5, boss (multiattack) ---------------- */
+    [ID_DRAGON] = {
+        .name       = "Dragon",
+        .size       = SIZE_HUGE,
+        .type       = TYPE_DRAGON,
+        .ac         = 17,
+        .hp_dice    = DICE(12, 10, 36),                /* 12d10+36 (avg 102) */
+        .speed      = 6,
+        .scores     = STATS(STR(23), DEX(12), CON(19),
+                            INT(14), WIS(13), CHA(15)),
+        .cr         = CR(5),
+        .xp         = 1800,
+        .glyph      = 'D',
+        .glyph_color= CE_RED,
+        .actions    = dragon_actions,
+        .n_actions  = 2,
+        .ai         = ai_boss,
     },
-    /* [ID_ZOMBIE] - CR 1/4, slow undead tank */
-    {
-        .name = "Zombie", .size = 3, .type = 1, .ac = 8,
-        .hp_dice = {3,8,9}, .speed = 4,   /* cham (20ft), HP cao (3d8+9 ~ 22) */
-        .scores = { 13, 6, 16, 3, 6, 5 },
-        .cr = 1, .xp = 50, .glyph = 'z', .glyph_color = 2,  /* xanh la (undead) */
-        .actions = zombie_actions, .n_actions = 1,
-        .ai = ai_melee_chaser,
+
+    /* [ID_ZOMBIE] - CR 1/4, slow undead tank ---------------- */
+    [ID_ZOMBIE] = {
+        .name       = "Zombie",
+        .size       = SIZE_MEDIUM,
+        .type       = TYPE_UNDEAD,
+        .ac         = 8,
+        .hp_dice    = DICE(3, 8, 9),                   /* 3d8+9 (avg 22) */
+        .speed      = 4,                               /* 20 ft - cham */
+        .scores     = STATS(STR(13), DEX(6),  CON(16),
+                            INT(3),  WIS(6),  CHA(5)),
+        .cr         = CR(0.25),
+        .xp         = 50,
+        .glyph      = 'z',
+        .glyph_color= CE_DGREEN,                       /* xanh la (undead) */
+        .actions    = zombie_actions,
+        .n_actions  = 1,
+        .ai         = ai_melee_chaser,
     },
 };
-/* N_MONSTERS la #define trong monsters.h (= 8). */
