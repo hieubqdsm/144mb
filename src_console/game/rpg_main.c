@@ -436,13 +436,38 @@ static void draw_title(void){
     by += gap;
     if(ui_button(btn_x, by, btn_w, T(S_QUIT), 12)){ ce_quit(); }
 
+    /* Keyboard shortcuts: phím 1-N chọn menu nhanh (ngoài click chuột) */
+    {
+        int key_idx = -1;
+        if(ce_keyPressed('1')) key_idx = 0;
+        else if(ce_keyPressed('2')) key_idx = 1;
+        else if(ce_keyPressed('3')) key_idx = 2;
+        else if(ce_keyPressed('4')) key_idx = 3;
+        if(key_idx >= 0){
+            if(has_save){
+                if(key_idx == 0){
+                    if(do_load()){ show_feedback(T(S_CONTINUE)); g_state = ST_PLAY; }
+                    else show_feedback(T(S_LOAD_FAIL));
+                }
+                else if(key_idx == 1) g_state = ST_CLASS;
+                else if(key_idx == 2){ g_prev_state = ST_TITLE; g_state = ST_OPTIONS; }
+                else if(key_idx == 3) ce_quit();
+            } else {
+                if(key_idx == 0) g_state = ST_CLASS;
+                else if(key_idx == 1){ g_prev_state = ST_TITLE; g_state = ST_OPTIONS; }
+                else if(key_idx == 2) ce_quit();
+            }
+        }
+    }
+
     /* Feedback tam thoi (sau save/load) */
     if(g_feedback_frames > 0){
         ce_text(SCREEN_W/2-20, SCREEN_H-5, g_feedback, 14);
     }
     /* Hint phia duoi */
-    ce_text(SCREEN_W/2-18, SCREEN_H-3, T(S_LANG_HINT), 8);
-    ce_text(SCREEN_W/2-7, SCREEN_H-2, T(S_ESC_HINT), 8);
+    ce_text(SCREEN_W/2-30, SCREEN_H-3, "Click chuot hoac nhan 1-2-3 de chon menu", 8);
+    ce_text(SCREEN_W/2-18, SCREEN_H-2, T(S_LANG_HINT), 8);
+    ce_text(SCREEN_W/2-7, SCREEN_H-1, T(S_ESC_HINT), 8);
     /* Version goc phai */
     ce_text(SCREEN_W-9, SCREEN_H-1, T(S_VERSION), 8);
 
@@ -457,7 +482,11 @@ static void draw_class(void){
     if(ui_button(SCREEN_W/2-13, 14, 26, T(S_MAGE), 9)){ g_player_class = 1; new_game(1); }
     ce_text(SCREEN_W/2-15, 22, T(S_CLASS_START), 7);
     ce_text(SCREEN_W/2-20, 24, T(S_CLASS_GEAR), 8);
+    ce_text(SCREEN_W/2-20, SCREEN_H-5, "Click hoac nhan 1=Fighter, 2=Mage", 8);
     ce_text(SCREEN_W/2-9, SCREEN_H-3, T(S_BACK), 8);
+    /* Keyboard shortcuts */
+    if(ce_keyPressed('1')){ g_player_class = 0; new_game(0); }
+    if(ce_keyPressed('2')){ g_player_class = 1; new_game(1); }
 }
 
 /* Pause overlay: ve LEN tren man hinh play (KHONG clear). */

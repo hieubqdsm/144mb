@@ -63,9 +63,19 @@ static LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp){
             ce_mouseY = (g_cellH > 0) ? py / g_cellH : 0;
             return 0;
         }
-        case WM_LBUTTONDOWN: g_mouseBtn[0] = 2; return 0;
-        case WM_RBUTTONDOWN: g_mouseBtn[1] = 2; return 0;
-        case WM_MBUTTONDOWN: g_mouseBtn[2] = 2; return 0;
+        case WM_LBUTTONDOWN:
+            /* Cap nhat toa do mouse ngay khi click (truoc do chi update o MOUSEMOVE) */
+            ce_mouseX = (g_cellW > 0) ? (LOWORD(lp) / g_cellW) : 0;
+            ce_mouseY = (g_cellH > 0) ? (HIWORD(lp) / g_cellH) : 0;
+            g_mouseBtn[0] = 2; return 0;
+        case WM_RBUTTONDOWN:
+            ce_mouseX = (g_cellW > 0) ? (LOWORD(lp) / g_cellW) : 0;
+            ce_mouseY = (g_cellH > 0) ? (HIWORD(lp) / g_cellH) : 0;
+            g_mouseBtn[1] = 2; return 0;
+        case WM_MBUTTONDOWN:
+            ce_mouseX = (g_cellW > 0) ? (LOWORD(lp) / g_cellW) : 0;
+            ce_mouseY = (g_cellH > 0) ? (HIWORD(lp) / g_cellH) : 0;
+            g_mouseBtn[2] = 2; return 0;
     }
     return DefWindowProcW(h, msg, wp, lp);
 }
@@ -283,13 +293,6 @@ int ce_getattr(int x, int y){
 
 /* ---------- Flip: render backbuf -> memDC -> screen ---------- */
 void ce_flip(void){
-    /* Drain messages (WM_PAINT etc.) */
-    MSG msg;
-    while(PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)){
-        if(msg.message == WM_QUIT){ ce_running = 0; break; }
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
     /* Sweep backbuf, draw each cell */
     RECT cellRect;
     for(int y=0;y<SCREEN_H;y++){
@@ -315,18 +318,34 @@ void ce_inputUpdate(void){
         else if(held)                    g_keys[i] = 1;
         else                             g_keys[i] = 0;
     }
-    /* Mouse buttons: edge 2 chi khi WM_xBUTTONDOWN set, sau do demote 1 */
+    /* Mouse buttons: edge 2 chi khi WM_xBUTTONDOWN set.
+       CHÚ Ý: KHÔNG demote edge 2 -> 1 o day (se bi race condition voi caller).
+       Edge 2 duoc clear trong ce_inputEnd() sau khi caller (game_update) da doc. */
     for(int i=0;i<3;i++){
         int vk = (i==0)?VK_LBUTTON:(i==1)?VK_RBUTTON:VK_MBUTTON;
         int held = (GetAsyncKeyState(vk) & 0x8000) ? 1 : 0;
-        if(g_mouseBtn[i]==2 && held) g_mouseBtn[i] = 1;  /* edge -> held */
-        else if(g_mouseBtn[i]==2 && !held) g_mouseBtn[i] = 0;
-        if(held && g_mouseBtn[i]==0) g_mouseBtn[i] = 1;
+        if(g_mouseBtn[i]==2){
+            /* edge tu WM_xBUTTONDOWN: giu nguyen 2 trong frame nay,
+               ce_inputEnd se clear sau khi game_update da doc */
+        } else if(held){
+            g_mouseBtn[i] = 1;   /* held (chua nha) */
+        } else {
+            g_mouseBtn[i] = 0;   /* released */
+        }
     }
 }
 void ce_inputEnd(void){
     for(int i=0;i<256;i++) g_prevKeys[i] = (g_keys[i]!=0);
-    for(int i=0;i<3;i++)  g_prevMouseBtn[i] = (g_mouseBtn[i]!=0);
+    /* Sau khi game_update da doc edge click, demote edge 2 -> 1 (held)
+       hoac 0 (released). Cela tranh click bi trung lap o frame sau. */
+    for(int i=0;i<3;i++){
+        if(g_mouseBtn[i]==2){
+            int vk = (i==0)?VK_LBUTTON:(i==1)?VK_RBUTTON:VK_MBUTTON;
+            int held = (GetAsyncKeyState(vk) & 0x8000) ? 1 : 0;
+            g_mouseBtn[i] = held ? 1 : 0;
+        }
+        g_prevMouseBtn[i] = (g_mouseBtn[i]!=0);
+    }
 }
 int ce_key(int vk){ return g_keys[vk]; }
 int ce_keyPressed(int vk){ return g_keys[vk]==2; }
@@ -355,6 +374,17 @@ void ce_run(void (*game_update)(float dt)){
         float dt = (float)(now - lastTime);
         lastTime = now;
         if(dt > 0.1f) dt = 0.1f;
+
+        /* Pump Windows messages TRUOC input update, de WM_LBUTTONDOWN
+           (mouse click) duoc dispatch vao WndProc truoc khi game_update doc. */
+        {
+            MSG msg;
+            while(PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE)){
+                if(msg.message == WM_QUIT){ ce_running = 0; break; }
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
 
         ce_inputUpdate();
         game_update(dt);
