@@ -32,3 +32,4 @@ tools/*.exe
 # Temp
 *.tmp
 *.bat.tmp
+__pycache__/
