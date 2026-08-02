@@ -2,8 +2,13 @@
    ACTOR - Implementation
    ===================================================================== */
 #include "actor.h"
+#include "i18n.h"      /* Lang enum + g_lang extern declaration */
 #include "../engine/rng.h"
 #include <string.h>
+
+/* Song ngu: g_lang owner o day (single definition, shared toan bo game).
+   Default tieng Viet. Caller chi include i18n.h de dung (extern). */
+Lang g_lang = LANG_VI;
 
 int actor_ability_mod(int score){
     /* floor((score-10)/2). C integer division lam tron ve 0, can xu ly am. */
@@ -144,4 +149,11 @@ void actor_death_save(Actor *a, RNG *rng, DeathSaves *ds){
 int actor_is_dying(const Actor *a){
     /* Dying = HP 0 but death saves chua 3 fail (not fully dead yet) */
     return (a->hp == 0) && !(a->flags & EF_DEAD);
+}
+
+const char *monster_name(const Actor *a){
+    /* Song ngu: lay name_vi neu co va dang tieng Viet, nguoc lai name (EN) */
+    if(!a || !a->type) return "?";
+    if(g_lang == LANG_VI && a->type->name_vi) return a->type->name_vi;
+    return a->type->name;
 }

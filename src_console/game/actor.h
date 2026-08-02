@@ -34,6 +34,10 @@ void actor_clear_condition(Actor *a, Condition c);
 uint16_t actor_glyph(const Actor *a);
 int actor_color(const Actor *a);
 
+/* Ten hien thi theo ngon ngu hien tai (g_lang, song ngu VI/EN).
+   Tra ve type->name_vi neu co, nguoc lai type->name. */
+const char *monster_name(const Actor *a);
+
 /* AC hieu qua = base AC (tu type) + ac_bonus (tu conditions/equipment).
    Caller truyen ac_bonus (vd tu inv_total_ac_bonus + cond_ac_bonus). */
 int actor_effective_ac(const Actor *a, int ac_bonus);

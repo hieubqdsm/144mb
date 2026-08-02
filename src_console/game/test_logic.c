@@ -256,13 +256,16 @@ static void test_death_saves(void){
 
 static void test_monster_table(void){
     TEST("Monster table integrity");
-    CHECK(N_MONSTERS == 8, "N_MONSTERS = 8");
+    CHECK(N_MONSTERS == 19, "N_MONSTERS = 19 (8 base + 11 LMoP)");
     int ok = 1;
     for(int i = 0; i < N_MONSTERS; i++){
         if(!MONSTERS[i].name){ ok = 0; break; }
         if(MONSTERS[i].hp_dice.sides == 0){ ok = 0; break; }
     }
     CHECK(ok, "tat ca entry phai co name + hp_dice");
+    /* Song ngu: kiem tra entry co name_vi */
+    CHECK(MONSTERS[ID_GOBLIN].name_vi != NULL && MONSTERS[ID_NEZZNAR].name_vi != NULL,
+          "name_vi phai co cho song ngu");
 }
 
 /* ============ MAIN ============ */

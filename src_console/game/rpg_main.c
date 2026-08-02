@@ -32,6 +32,7 @@
 #include "ui.h"
 #include "save.h"
 #include "i18n.h"
+#include "dialogue.h"
 /* data tables compiled rieng (declarations trong headers) */
 #include "../data/monsters.h"
 #include "../game/items.h"
@@ -41,7 +42,8 @@
 
 /* ---------- Global state ---------- */
 RNG g_r;
-Lang g_lang = LANG_VI;      /* ngon ngu UI (defined extern trong i18n.h) */
+/* g_lang defined trong actor.c (shared cho toan bo game).
+   i18n.h da extern Lang g_lang; nen khong can redefine o day. */
 static Floor g_floor;
 static Actor g_all[20];     /* player + monsters, index 0 = player */
 static int g_n_actors;
@@ -125,7 +127,7 @@ static void log_add(const char *msg){
 }
 
 /* State machine */
-enum { ST_TITLE, ST_CLASS, ST_PLAY, ST_PAUSE, ST_OPTIONS, ST_ABOUT, ST_DEAD };
+enum { ST_TITLE, ST_CLASS, ST_PLAY, ST_PAUSE, ST_OPTIONS, ST_ABOUT, ST_DEAD, ST_DIALOGUE };
 static int g_state = ST_TITLE;
 static int g_prev_state = ST_TITLE;   /* de ESC quay lai state truoc (vd Options<-Title) */
 static int g_frame = 0;
@@ -551,6 +553,7 @@ void update(float dt){
             case ST_PAUSE:   g_state = ST_PLAY;   break;
             case ST_OPTIONS: g_state = g_prev_state; break;  /* quay lai title hoac pause */
             case ST_ABOUT:   g_state = g_prev_state; break;
+            case ST_DIALOGUE: g_state = g_prev_state; dlg_close(); break;  /* dismiss dialogue */
             case ST_CLASS:   g_state = ST_TITLE;  break;
             case ST_DEAD:    g_state = ST_TITLE;  break;
             case ST_TITLE:   ce_quit();           break;
@@ -612,6 +615,17 @@ void update(float dt){
                 player_act_after();
             }
             if(ce_keyPressed('I')) g_show_inventory = !g_show_inventory;
+            /* TEST: phím T = mở dialogue kế tiếp (demo cycle). Sau này thay = interact NPC */
+            if(ce_keyPressed('T')){
+                static int dlg_test_idx = DLG_DM_INTRO;
+                if(dlg_test_idx >= DLG_COUNT) dlg_test_idx = DLG_DM_INTRO;
+                if(dlg_test_idx == DLG_NONE) dlg_test_idx = DLG_DM_INTRO;
+                g_prev_state = ST_PLAY;
+                dlg_start(DIALOGUES[dlg_test_idx]);
+                g_state = ST_DIALOGUE;
+                dlg_test_idx++;
+                if(dlg_test_idx >= DLG_COUNT) dlg_test_idx = DLG_DM_INTRO;
+            }
             if(ce_keyPressed(VK_OEM_2)){  /* '/' or '>' */
                 if(map_get(g_floor.map, g_player_x, g_player_y) == TILE_STAIRS_DOWN){
                     log_add("Xuong tang sau...");
@@ -648,6 +662,26 @@ void update(float dt){
             ui_log(2, 2 + g_floor.map->h + 1, lines, g_log_n, 6);
             /* Overlay pause */
             draw_pause();
+            break;
+        }
+        case ST_DIALOGUE: {
+            /* Ve lai man hinh play (KHONG input) roi overlay dialogue len tren */
+            fov_compute(g_floor.map, g_player_x, g_player_y, 8);
+            draw_map(2, 2);
+            int sbx = 2 + g_floor.map->w + 1;
+            for(int y=0;y<SCREEN_H;y++) ce_putc(sbx, y, (WCHAR)0x2551, 8);
+            draw_sidebar(sbx);
+            const char *lines[6];
+            for(int i=0;i<g_log_n;i++) lines[i]=g_log[i];
+            ui_log(2, 2 + g_floor.map->h + 1, lines, g_log_n, 6);
+            /* Update + render dialogue overlay */
+            dlg_update(dt);
+            /* Box căn giữa màn hình, phía dưới */
+            int box_x = (SCREEN_W - 70) / 2;   /* BOX_W=70 */
+            int box_y = SCREEN_H - 12;          /* gần đáy */
+            dlg_render(box_x, box_y);
+            /* Nếu dialogue đóng (hết dòng) → quay lại play */
+            if(!dlg_active()) g_state = g_prev_state;
             break;
         }
         case ST_OPTIONS:

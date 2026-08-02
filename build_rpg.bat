@@ -27,10 +27,12 @@ cl /nologo /MT /O2 /utf-8 /Fe:%OUTDIR%\rpg.exe ^
    src_console\game\spell_resolve.c ^
    src_console\game\dungeon.c ^
    src_console\game\save.c ^
+   src_console\game\dialogue.c ^
    src_console\game\ui.c ^
    src_console\data\monsters.c ^
    src_console\data\items.c ^
    src_console\data\spells.c ^
+   src_console\data\dialogues.c ^
    src_console\game\rpg_main.c ^
    /link /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup ^
    gdi32.lib user32.lib kernel32.lib winmm.lib legacy_stdio_definitions.lib

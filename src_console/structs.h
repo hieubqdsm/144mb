@@ -71,7 +71,8 @@ struct MonsterAction {
 
 /* ---------- Monster TYPE (static definition, shared giua instances) ---------- */
 struct MonsterType {
-    const char *name;        /* "Goblin" */
+    const char *name;        /* "Goblin" (English) */
+    const char *name_vi;     /* "Yêu tinh" (Vietnamese, song ngu) - NULL = dung .name */
     uint8_t size;            /* enum: tiny..gargantuan (don gian 1-6) */
     uint8_t type;            /* humanoid/beast/dragon... (index) */
     uint8_t ac;              /* Armor Class */

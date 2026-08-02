@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lost Mine of Phandelver — Bản dịch Việt (Benchmark 144mb)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+    background: #0f1419; color: #d4d4d4; line-height: 1.7;
+    font-size: 15px;
+  }
+  .layout { display: grid; grid-template-columns: 260px 1fr; max-width: 1300px; margin: 0 auto; }
+  /* SIDEBAR */
+  nav {
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: #161b22; border-right: 1px solid #30363d; padding: 20px;
+  }
+  nav h1 { font-size: 16px; color: #58a6ff; margin-bottom: 4px; }
+  nav .meta { font-size: 11px; color: #8b949e; margin-bottom: 16px; }
+  nav ol { list-style: none; }
+  nav ol li { margin: 4px 0; }
+  nav ol li a {
+    color: #8b949e; text-decoration: none; font-size: 13px; display: block;
+    padding: 5px 10px; border-radius: 4px; transition: all 0.15s;
+  }
+  nav ol li a:hover { background: #21262d; color: #58a6ff; }
+  nav ol li.lvl2 { padding-left: 18px; }
+  nav ol li.lvl2 a { font-size: 12px; color: #6e7681; }
+  nav ol li a.active { background: #1f6feb; color: white; }
+  /* MAIN */
+  main { padding: 40px 50px; max-width: 900px; }
+  section { margin-bottom: 60px; scroll-margin-top: 20px; }
+  h2 {
+    font-size: 26px; color: #58a6ff; margin-bottom: 8px;
+    padding-bottom: 10px; border-bottom: 2px solid #21262d;
+  }
+  h3 { font-size: 19px; color: #7ee787; margin: 24px 0 10px; }
+  h4 { font-size: 16px; color: #ffa657; margin: 16px 0 6px; }
+  p { margin-bottom: 12px; }
+  .lead { font-size: 16px; color: #c9d1d9; }
+  ul, ol { margin: 8px 0 14px 24px; }
+  li { margin: 4px 0; }
+  /* TABLES */
+  table {
+    width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 14px;
+    background: #161b22; border-radius: 6px; overflow: hidden;
+  }
+  th {
+    background: #21262d; color: #58a6ff; text-align: left; padding: 10px 12px;
+    font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  td { padding: 9px 12px; border-top: 1px solid #21262d; vertical-align: top; }
+  tr:hover td { background: #1c2128; }
+  /* CARDS */
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 16px 20px; margin: 12px 0;
+  }
+  .card.npc { border-left: 4px solid #7ee787; }
+  .card.monster { border-left: 4px solid #ff7b72; }
+  .card.location { border-left: 4px solid #58a6ff; }
+  .card.boss { border-left: 4px solid #d2a8ff; background: #1a1622; }
+  .card h4 { margin-top: 0; }
+  /* BADGES */
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; margin-right: 4px;
+  }
+  .badge.cr { background: #6e40c9; color: white; }
+  .badge.role { background: #1f6feb; color: white; }
+  .badge.faction { background: #bf8700; color: #161b22; }
+  .badge.warn { background: #da3633; color: white; }
+  .badge.ok { background: #238636; color: white; }
+  /* CALLOUT */
+  .callout {
+    background: #1c2128; border-left: 4px solid #ffa657; padding: 14px 18px;
+    margin: 16px 0; border-radius: 4px;
+  }
+  .callout.warn { border-left-color: #da3633; background: #2a1618; }
+  .callout.ok { border-left-color: #238636; background: #122620; }
+  .callout strong { color: #ffa657; }
+  .callout.warn strong { color: #ff7b72; }
+  .callout.ok strong { color: #7ee787; }
+  /* STORY DIAGRAM */
+  .diagram {
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    padding: 18px; font-family: 'Consolas', monospace; font-size: 12px;
+    color: #8b949e; white-space: pre; overflow-x: auto; margin: 14px 0;
+  }
+  /* BUDGET BARS */
+  .bar-container { background: #21262d; border-radius: 4px; height: 22px; margin: 6px 0; overflow: hidden; }
+  .bar-fill { height: 100%; display: flex; align-items: center; padding: 0 8px; font-size: 11px; font-weight: 600; color: white; }
+  .bar-fill.engine { background: linear-gradient(90deg, #6e40c9, #8957e5); }
+  .bar-fill.art { background: linear-gradient(90deg, #1f6feb, #58a6ff); }
+  .bar-fill.free { background: #238636; color: #c9d1d9; }
+  .legend { display: flex; gap: 16px; margin: 10px 0; font-size: 12px; flex-wrap: wrap; }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .legend .dot { width: 12px; height: 12px; border-radius: 2px; }
+  code {
+    background: #21262d; padding: 2px 6px; border-radius: 3px;
+    font-family: 'Consolas', monospace; font-size: 13px; color: #ffa657;
+  }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 14px 0; }
+  .stat-box { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; text-align: center; }
+  .stat-box .num { font-size: 28px; font-weight: 700; color: #58a6ff; }
+  .stat-box .label { font-size: 11px; color: #8b949e; text-transform: uppercase; margin-top: 2px; }
+  footer { text-align: center; padding: 30px; color: #6e7681; font-size: 12px; border-top: 1px solid #21262d; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<!-- ═══════════════ SIDEBAR ═══════════════ -->
+<nav>
+  <h1>⛏️ Lost Mine of Phandelver</h1>
+  <div class="meta">Bản dịch Việt · Benchmark 144mb · D&D 5e</div>
+  <ol>
+    <li><a href="#tong-quan">1. Tổng quan module</a></li>
+    <li><a href="#cau-truc">2. Cấu trúc 4 phần</a></li>
+    <li><a href="#diem-nhan">3. Điểm nổi bật</a></li>
+    <li><a href="#npc">4. Nhân vật (NPC)</a></li>
+    <li><a href="#monsters">5. Quái vật</a></li>
+    <li><a href="#locations">6. Địa điểm</a></li>
+    <li><a href="#cragmaw">7. Cragmaw Hideout</a></li>
+    <li><a href="#redbrand">8. Redbrand Hideout</a></li>
+    <li><a href="#phandalin">9. Thị trấn Phandalin</a></li>
+    <li><a href="#story">10. Cốt truyện</a></li>
+    <li><a href="#items">11. Vật phẩm phép</a></li>
+    <li><a href="#budget">12. Đánh giá 144mb</a></li>
+    <li><a href="#roadmap">13. Lộ trình làm game</a></li>
+  </ol>
+  <div style="margin-top: 20px; padding-top: 16px; border-top: 1px solid #30363d; font-size: 11px; color: #6e7681;">
+    📖 Nguồn: D&D 5e Starter Set<br>
+    Tác giả: Richard Baker<br>
+    Xuất bản: 2014 (WotC)
+  </div>
+</nav>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<main>
+
+<!-- 1. TỔNG QUAN -->
+<section id="tong-quan">
+  <h2>1. Tổng quan module</h2>
+  <p class="lead">
+    <strong>Lost Mine of Phandelver</strong> (LMoP) là chiến dịch nhập môn kinh điển nhất của D&D 5e,
+    nằm trong <em>Starter Set</em>. Đây là benchmark lý tưởng cho dự án game 1.44MB vì
+    vừa đủ phong phú (5 hầm ngục, 20 NPC, 25 quái), vừa vừa phải để hoàn thành.
+  </p>
+
+  <div class="stat-grid">
+    <div class="stat-box"><div class="num">50</div><div class="label">Giờ chơi</div></div>
+    <div class="stat-box"><div class="num">12-15</div><div class="label">Phiên (session)</div></div>
+    <div class="stat-box"><div class="num">1→4</div><div class="label">Cấp nhân vật</div></div>
+    <div class="stat-box"><div class="num">4</div><div class="label">Chương chính</div></div>
+    <div class="stat-box"><div class="num">~25</div><div class="label">Loại quái</div></div>
+    <div class="stat-box"><div class="num">~20</div><div class="label">NPC có tên</div></div>
+  </div>
+
+  <div class="callout">
+    <strong>Tại sao chọn LMoP làm benchmark?</strong>
+    LMoP đại diện cho định nghĩa "medium campaign" thực sự — không quá ngắn (như 1-shot),
+    không phình (như <em>Curse of Strahd</em>). Có đủ thành phần: thị trấn trung tâm,
+    vùng hoang dã, hầm ngục chính, NPC đối thoại, quest, và boss rồng.
+  </div>
+</section>
+
+<!-- 2. CẤU TRÚC -->
+<section id="cau-truc">
+  <h2>2. Cấu trúc 4 phần</h2>
+  <table>
+    <tr><th>Phần</th><th>Tên (Anh / Việt)</th><th>Trang</th><th>Trọng tâm</th></tr>
+    <tr><td><strong>Mở đầu</strong></td><td>Introduction / Giới thiệu</td><td>1-5</td><td>Bối cảnh, Forgotten Realms, nhân vật mẫu</td></tr>
+    <tr><td><strong>Phần 1</strong></td><td>Goblin Arrows / Mũi tên Yêu tinh</td><td>6-12</td><td>Phục kích + hầm Cragmaw Hideout</td></tr>
+    <tr><td><strong>Phần 2</strong></td><td>Phandalin / Phandalin</td><td>13-26</td><td>Thị trấn trung tâm + Redbrand Hideout</td></tr>
+    <tr><td><strong>Phần 3</strong></td><td>The Spider's Web / Mạng nhện</td><td>27-41</td><td>Vùng hoang dã sandbox (6 địa điểm)</td></tr>
+    <tr><td><strong>Phần 4</strong></td><td>Wave Echo Cave / Hang Vang vọng</td><td>42-50</td><td>Hầm cuối + Lò phép + boss</td></tr>
+    <tr><td>Phụ lục A</td><td>Magic Items / Vật phẩm phép</td><td>51-55</td><td>~12 vật phẩm</td></tr>
+    <tr><td>Phụ lục B</td><td>Monsters / Quái vật</td><td>56-64</td><td>~25 bảng chỉ số</td></tr>
+  </table>
+</section>
+
+<!-- 3. ĐIỂM NỔI BẬT -->
+<section id="diem-nhan">
+  <h2>3. Điểm nổi bật</h2>
+
+  <div class="card location">
+    <h4>🗺️ Vùng hoang dã tự do (sandbox)</h4>
+    <p>Phần 3 cho người chơi tự do khám phá 6 địa điểm theo thứ tự bất kỳ — không bắt buộc tuyến tính.
+    Đây là yếu tố "open world" nhẹ, đặc trưng của D&D cổ điển.</p>
+  </div>
+
+  <div class="card boss">
+    <h4>🐉 Rồng xanh non (Venomfang)</h4>
+    <p>Một trong những encounter "Deadly" nổi tiếng — thách thức cho nhóm cấp 3.
+    Có thể đàm phán, chiến đấu, hoặc bỏ qua.</p>
+  </div>
+
+  <div class="card npc">
+    <h4>🎭 Nhiều phe phái (factions)</h4>
+    <p>Harpers, Zhentarim, Lords' Alliance, Order of the Gauntlet — mỗi NPC có thể thuộc phe phái riêng,
+    tạo chiều sâu cốt truyện.</p>
+  </div>
+
+  <div class="card monster">
+    <h4>⚔️ Boss cuối: Nhện Đen (Nezznar)</h4>
+    <p>Drow pháp sư — kẻ chủ mưu kiểm soát bầy goblin và băng Redbrand,
+    tìm kiếm Lò Phép (Forge of Spells).</p>
+  </div>
+</section>
+
+<!-- 4. NPC -->
+<section id="npc">
+  <h2>4. Nhân vật (NPC)</h2>
+  <p class="lead">LMoP có ~20 NPC có tên và vai trò cốt truyện, tập trung ở thị trấn Phandalin.</p>
+
+  <h3>🎯 NPC quest chính</h3>
+  <table>
+    <tr><th>NPC</th><th>Chủng tộc</th><th>Vai trò</th><th>Phe phái</th></tr>
+    <tr><td><strong>Gundren Rockseeker</strong></td><td>Dwarf (Lùn)</td><td>Người thuê nhóm, có bản đồ tới Wave Echo Cave, bị bắt cóc</td><td><span class="badge faction">—</span></td></tr>
+    <tr><td><strong>Sildar Hallwinter</strong></td><td>Human (Người)</td><td>Chiến binh hộ tống Gundren, cứu từ Cragmaw</td><td><span class="badge faction">Lords' Alliance</span></td></tr>
+    <tr><td><strong>Nezznar (Nhện Đen)</strong></td><td>Drow (Elf tối)</td><td>Pháp sư ác, chủ mưu, boss cuối</td><td><span class="badge warn">Villain</span></td></tr>
+    <tr><td><strong>King Grol</strong></td><td>Bugbear</td><td>Thủ lĩnh bầy Cragmaw, giữ Gundren</td><td><span class="badge warn">Enemy</span></td></tr>
+  </table>
+
+  <h3>🏘️ NPC thị trấn Phandalin</h3>
+  <table>
+    <tr><th>NPC</th><th>Vai trò</th><th>Quest/Nội dung</th></tr>
+    <tr><td><strong>Elmar Barthen</strong></td><td>Chủ Barthen's Provisions</td><td>Mua bán đồ, trả tiền hộ tống</td></tr>
+    <tr><td><strong>Linene Graywind</strong></td><td>Chủ Lionshield Coster</td><td>Bán vũ khí/giáp</td></tr>
+    <tr><td><strong>Toblen Stonehill</strong></td><td>Chủ quán Stonehill Inn</td><td>Tin đồn, nghỉ ngơi</td></tr>
+    <tr><td><strong>Daran Edermath</strong></td><td>Cựu phiêu lưu, hưu trí</td><td>Quest: Old Owl Well (xác sống)</td></tr>
+    <tr><td><strong>Halia Thornton</strong></td><td>Chủ Miner's Exchange</td><td>Quest: Redbrand (Zhentarim)</td></tr>
+    <tr><td><strong>Qellene Alderleaf</strong></td><td>Nông dân Halfling</td><td>Thông tin đường hầm bí mật</td></tr>
+    <tr><td><strong>Carp Alderleaf</strong></td><td>Con Qellene</td><td>Phát hiện hầm dưới Tresendar Manor</td></tr>
+    <tr><td><strong>Sister Garaele</strong></td><td>Elf tu sĩ</td><td>Quest: Agatha banshee (Harpers)</td></tr>
+    <tr><td><strong>Harbin Wester</strong></td><td>Townmaster (hèn nhát)</td><td>Quest: Orc ở Wyvern Tor</td></tr>
+    <tr><td><strong>Iarno "Glasstaff" Albrek</strong></td><td>Pháp sư, thủ lĩnh Redbrand</td><td>Boss phụ, cầm Spider Staff</td></tr>
+    <tr><td><strong>Mirna, Nars, Nilsa Dendrar</strong></td><td>Người bị bắt cóc</td><td>Cứu khỏi Redbrand slave pens</td></tr>
+  </table>
+
+  <h3>🌲 NPC vùng hoang dã</h3>
+  <table>
+    <tr><th>NPC</th><th>Vai trò</th></tr>
+    <tr><td><strong>Reidoth</strong></td><td>Druid, am hiểu vùng đất, biết đường tới Thundertree</td></tr>
+    <tr><td><strong>Agatha</strong></td><td>Banshee, có kiến thức về sách phép cổ</td></tr>
+  </table>
+</section>
+
+<!-- 5. MONSTERS -->
+<section id="monsters">
+  <h2>5. Quái vật (~25 loại)</h2>
+
+  <table>
+    <tr><th>Nhóm</th><th>Quái</th><th>CR</th><th>Ghi chú</th></tr>
+    <tr><td rowspan="4"><strong>Humanoid</strong></td><td>Goblin</td><td><span class="badge cr">1/4</span></td><td>Bầy Cragmaw, phục kích, xạ thủ</td></tr>
+    <tr><td>Bugbear</td><td><span class="badge cr">1</span></td><td>Klarg, King Grol — to, mạnh</td></tr>
+    <tr><td>Orc</td><td><span class="badge cr">1/2</span></td><td>Cướp bóc ở Wyvern Tor</td></tr>
+    <tr><td>Redbrand Ruffian</td><td><span class="badge cr">1</span></td><td>Băng côn đồ áo choàng đỏ</td></tr>
+    <tr><td rowspan="2"><strong>Beast</strong></td><td>Wolf (Sói)</td><td><span class="badge cr">1/4</span></td><td>Chó giữ trong Cragmaw kennel</td></tr>
+    <tr><td>Dire Wolf</td><td><span class="badge cr">1</span></td><td>Sói khổng lồ</td></tr>
+    <tr><td rowspan="4"><strong>Undead</strong></td><td>Skeleton</td><td><span class="badge cr">1/4</span></td><td>Canh mộ Tresendar</td></tr>
+    <tr><td>Zombie</td><td><span class="badge cr">1/4</span></td><td>Wave Echo Cave</td></tr>
+    <tr><td>Banshee (Agatha)</td><td><span class="badge cr">4</span></td><td>Conyberry, wail attack</td></tr>
+    <tr><td>Wraith / Spectator</td><td><span class="badge cr">4-5</span></td><td>Wave Echo Cave guardian</td></tr>
+    <tr><td><strong>Dragon</strong></td><td>Young Green Dragon (Venomfang)</td><td><span class="badge cr">4</span></td><td><span class="badge warn">DEADLY cho lv3</span> Thundertree</td></tr>
+    <tr><td><strong>Boss</strong></td><td>Nezznar (Drow wizard)</td><td><span class="badge cr">2</span></td><td>+ 2 nhện khổng lồ</td></tr>
+    <tr><td><strong>Other</strong></td><td>Ochre Jelly</td><td><span class="badge cr">2</span></td><td>Wave Echo Cave, chia đôi khi bị chém</td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>⚠️ Đặc biệt: Venomfang (Rồng xanh non)</strong>
+    Encounter Deadly cho nhóm cấp 3. D&D thiết kế để người chơi <em>đàm phán</em> hoặc <em>bỏ chạy</em>,
+    không chiến đấu trực tiếp. Đây là bài học D&D: không phải encounter nào cũng giải bằng kiếm.
+  </div>
+</section>
+
+<!-- 6. LOCATIONS -->
+<section id="locations">
+  <h2>6. Địa điểm (13 địa điểm chính)</h2>
+
+  <h3>🏘️ Thị trấn / Trung tâm</h3>
+  <div class="card location">
+    <h4>Neverwinter</h4>
+    <p>Thành phố cảng — điểm xuất phát của nhóm phiêu lưu.</p>
+  </div>
+  <div class="card location">
+    <h4>Phandalin</h4>
+    <p>Thị trấn biên giới, xây trên tàn tích cũ. Đây là <strong>hub trung tâm</strong> — nơi người chơi quay lại
+    để nghỉ ngơi, mua bán, nhận quest sau mỗi dungeon.</p>
+  </div>
+
+  <h3>🏰 Hầm ngục (5 dungeon)</h3>
+  <table>
+    <tr><th>Dungeon</th><th>Phần</th><th>Số khu vực</th><th>Mô tả</th></tr>
+    <tr><td><strong>Cragmaw Hideout</strong></td><td>1</td><td>8</td><td>Hệ thống hang, căn cứ goblin</td></tr>
+    <tr><td><strong>Redbrand Hideout</strong></td><td>2</td><td>8</td><td>Dưới Tresendar Manor, băng côn đồ</td></tr>
+    <tr><td><strong>Cragmaw Castle</strong></td><td>3</td><td>~12</td><td>Pháo đài King Grol, giữ Gundren</td></tr>
+    <tr><td><strong>Wave Echo Cave</strong></td><td>4</td><td>~16</td><td>Hầm cuối, Lò Phép, boss Nezznar</td></tr>
+    <tr><td><strong>Ruins of Thundertree</strong></td><td>3</td><td>~10</td><td>Thành bỏ hoang, undead + rồng</td></tr>
+  </table>
+
+  <h3>🌲 Vùng hoang dã (Phần 3 sandbox)</h3>
+  <ul>
+    <li><strong>Triboar Trail</strong> — con đường, encounter ngẫu nhiên</li>
+    <li><strong>Conyberry</strong> + <strong>Agatha's Lair</strong> — hang banshee</li>
+    <li><strong>Old Owl Well</strong> — tàn tích tháp canh cổ, xác sống</li>
+    <li><strong>Wyvern Tor</strong> — ổ orc cướp bóc</li>
+  </ul>
+</section>
+
+<!-- 7. CRAGMAW HIDEOUT -->
+<section id="cragmaw">
+  <h2>7. 🕳️ Cragmaw Hideout (Phần 1)</h2>
+  <p>Hệ thống hang — căn cứ bầy goblin Cragmaw. Dòng suối chảy ra cửa vào, che giấu bởi bụi gai.</p>
+
+  <table>
+    <tr><th>Khu</th><th>Tên</th><th>Nội dung</th><th>Quái / Bẫy</th></tr>
+    <tr><td><strong>1</strong></td><td>Cửa hang</td><td>Lối vào, dòng suối, bụi gai</td><td>—</td></tr>
+    <tr><td><strong>2</strong></td><td>Vị trí gác goblin</td><td>Đống bụi rỗng, gác cao</td><td>2 goblin canh</td></tr>
+    <tr><td><strong>3</strong></td><td>Chuồng chó</td><td>Phòng ẩm, mùi hôi</td><td>3 sói xích</td></tr>
+    <tr><td><strong>4</strong></td><td>Đường dốc</td><td>Leo dốc, mỏm đá mỏng</td><td>Bẫy mỏm (rơi)</td></tr>
+    <tr><td><strong>5</strong></td><td>Cầu vượt</td><td>Cầu gỗ lung lay, trên cao</td><td>1 goblin (kích lũy)</td></tr>
+    <tr><td><strong>6</strong></td><td>Phòng goblin</td><td>Phòng chung khói, gác trên</td><td>Yeemik + goblin, Sildar con tin</td></tr>
+    <tr><td><strong>7</strong></td><td>Đôi hồ nước</td><td>2 hồ = đập nước</td><td>Bẫy lũ (flood)</td></tr>
+    <tr><td><strong>8</strong></td><td>Hang Klarg</td><td>Đồ cướp, hỏa hoạn, ống khói</td><td><strong>Klarg (bugbear)</strong> + sói + rương</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>📦 Kho báu:</strong> Rương Klarg — lương thực + <code>Potion of Healing</code>.
+    <strong>🔑 NPC:</strong> Yeemik (kẻ soán ngôi), Sildar Hallwinter (cứu).
+  </div>
+</section>
+
+<!-- 8. REDBRAND HIDEOUT -->
+<section id="redbrand">
+  <h2>8. 🏚️ Redbrand Hideout (Phần 2)</h2>
+  <p>Hầm ngục dưới Tresendar Manor bỏ hoang — căn cứ băng Redbrand Ruffian.</p>
+
+  <table>
+    <tr><th>Khu</th><th>Tên</th><th>Nội dung</th><th>Quái / Bẫy</th></tr>
+    <tr><td><strong>1</strong></td><td>Hầm rượu</td><td>Kho, thùng, bể nước</td><td>Bể: túi chống nước (Potion of Invisibility)</td></tr>
+    <tr><td><strong>2</strong></td><td>Phòng lính</td><td>Giường đôi, thùng</td><td>3 Redbrand</td></tr>
+    <tr><td><strong>3</strong></td><td>Hành lang bẫy</td><td>Hành lang bụi</td><td>Bẫy hố (đá lỏng lẻo)</td></tr>
+    <tr><td><strong>4</strong></td><td>Crypt Tresendar</td><td>3 quan tài đá</td><td>Skeleton có vũ khí</td></tr>
+    <tr><td><strong>5</strong></td><td>Chuồng nô lệ</td><td>Cell thanh sắt</td><td>2 Redbrand, Mirna Dendrar + con</td></tr>
+    <tr><td><strong>6</strong></td><td>Kho vũ khí</td><td>Phòng khóa</td><td>Vũ khí + áo choàng đỏ</td></tr>
+    <tr><td><strong>7</strong></td><td>Kho / xưởng</td><td>Khu làm việc</td><td>—</td></tr>
+    <tr><td><strong>8</strong></td><td>Phòng Glasstaff</td><td>Phòng Iarno Albrek</td><td><strong>Iarno "Glasstaff"</strong> (pháp sư) + Spider Staff</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>📦 Kho báu:</strong> Potion of Invisibility, Spider Staff, vũ khí.
+    <strong>🔑 NPC:</strong> Iarno "Glasstaff" Albrek (thủ lĩnh Redbrand), Mirna Dendrar (cứu).
+  </div>
+</section>
+
+<!-- 9. PHANDALIN -->
+<section id="phandalin">
+  <h2>9. 🏘️ Thị trấn Phandalin</h2>
+  <p>Thị trấn biên giới ~12 tòa nhà. Đây là <strong>hub trung tâm</strong> — nơi người chơi quay lại.</p>
+
+  <table>
+    <tr><th>Tòa nhà</th><th>NPC</th><th>Chức năng</th></tr>
+    <tr><td>Barthen's Provisions</td><td>Elmar Barthen</td><td>Cửa hàng (đồ tổng hợp)</td></tr>
+    <tr><td>Lionshield Coster</td><td>Linene Graywind</td><td>Cửa hàng (vũ khí/giáp)</td></tr>
+    <tr><td>Stonehill Inn</td><td>Toblen Stonehill</td><td>Quán trọ (tin đồn, nghỉ)</td></tr>
+    <tr><td>Edermath Orchard</td><td>Daran Edermath</td><td>Quest: Old Owl Well</td></tr>
+    <tr><td>Miner's Exchange</td><td>Halia Thornton</td><td>Quest: Redbrand (Zhentarim)</td></tr>
+    <tr><td>Alderleaf Farm</td><td>Qellene + Carp</td><td>Quest: thông tin hầm bí mật</td></tr>
+    <tr><td>Shrine of Luck</td><td>Sister Garaele</td><td>Quest: Agatha (Harpers)</td></tr>
+    <tr><td>Townmaster's Hall</td><td>Harbin Wester</td><td>Quest: Wyvern Tor orcs</td></tr>
+    <tr><td>Tresendar Manor</td><td>(bỏ hoang)</td><td>→ Lối vào Redbrand Hideout</td></tr>
+  </table>
+</section>
+
+<!-- 10. STORY -->
+<section id="story">
+  <h2>10. 📜 Cốt truyện</h2>
+  <p>LMoP dùng cấu trúc <strong>tuyến tính + sandbox</strong> (hybrid):</p>
+
+  <div class="diagram">Neverwinter
+    │
+    ▼ [Phục kích Goblin]
+    │
+Cragmaw Hideout  ◄─── cứu Sildar Hallwinter
+    │
+    ▼
+Phandalin (HUB THỊ TRẤN)
+    │
+    ├───────────────┬───────────────┐
+    ▼               ▼               ▼
+Redbrand        Vùng hoang     Cragmaw Castle
+Hideout         dã sandbox     (King Grol,
+(Iarno          (Thundertree,  giữ Gundren +
+Glasstaff)      Old Owl Well,  bản đồ Wave Echo)
+                Wyvern Tor,
+                Conyberry)
+    │               │               │
+    └───────────────┴───────────────┘
+                    │
+                    ▼
+          Wave Echo Cave (HẦM CUỐI)
+                    │
+                    ├── Lò Phép (Forge of Spells)
+                    ├── Boss: Nezznar (Nhện Đen)
+                    └── Kết thúc</div>
+
+  <div class="callout">
+    <strong>📖 Tóm tắt cốt truyện:</strong>
+    Gundren Rockseeker (lùn) thuê nhóm hộ tống xe bò tới Phandalin. Trên đường,
+    nhóm bị phục kích và phát hiện Gundren bị bắt cóc. Cứu Sildar → biết về
+    băng Redbrand → khám phá thị trấn → tìm Gunren ở Cragmaw Castle →
+    thu được bản đồ tới Wave Echo Cave → đối đầu Nezznar (Nhện Đen) để
+    giành Lò Phép huyền thoại.
+  </div>
+</section>
+
+<!-- 11. ITEMS -->
+<section id="items">
+  <h2>11. ⚔️ Vật phẩm phép (Phụ lục A)</h2>
+  <p>LMoP có ~12 vật phẩm phép, phần lớn tìm trong dungeon.</p>
+
+  <table>
+    <tr><th>Vật phẩm</th><th>Loại</th><th>Nơi tìm</th></tr>
+    <tr><td>Potions of Healing (nhiều)</td><td>Thuốc</td><td>Rương Klarg, Cragmaw, Redbrand</td></tr>
+    <tr><td>Potion of Invisibility</td><td>Thuốc</td><td>Bể nước Redbrand (túi chống nước)</td></tr>
+    <tr><td><strong>Spider Staff</strong></td><td>Vũ khí phép</td><td>Iarno Glasstaff (Redbrand boss)</td></tr>
+    <tr><td><strong>Staff of Defense</strong></td><td>Vũ khí phép</td><td>Wave Echo Cave</td></tr>
+    <tr><td><strong>Lightbringer</strong></td><td>Chùy phép</td><td>Wave Echo Cave (crypt)</td></tr>
+    <tr><td><strong>Dragonthan</strong></td><td>Áo giáp vảy</td><td>Wave Echo Cave</td></tr>
+    <tr><td>+1 Vũ khí</td><td>Vũ khí</td><td>Wave Echo Cave</td></tr>
+    <tr><td>Vật phẩm chế từ Lò Phép</td><td>Đặc biệt</td><td>Forge of Spells</td></tr>
+  </table>
+</section>
+
+<!-- 12. BUDGET -->
+<section id="budget">
+  <h2>12. 💾 Đánh giá dung lượng 144mb</h2>
+  <p class="lead">Tính lại budget dựa trên số liệu <strong>thực tế</strong> từ LMoP (95 art assets),
+  thay vì ước lượng trước (345 assets).</p>
+
+  <h3>📊 Phân bổ budget</h3>
+  <p><strong>2 hướng approach (cả 2 đều FIT):</strong></p>
+
+  <h4>Hướng A: ASCII .xp (đường hiện tại)</h4>
+  <div class="legend">
+    <span><span class="dot" style="background:#8957e5;"></span>Engine + game logic (175 KB)</span>
+    <span><span class="dot" style="background:#58a6ff;"></span>Art assets (130 KB)</span>
+    <span><span class="dot" style="background:#238636;"></span>Còn trống (1,135 KB)</span>
+  </div>
+  <div class="bar-container">
+    <div class="bar-fill engine" style="width: 12.2%;">175</div>
+    <div class="bar-fill art" style="width: 9%;">130</div>
+    <div class="bar-fill free" style="width: 78.8%;">1,135 KB trống</div>
+  </div>
+
+  <h4>Hướng B: 1-bit RLE hybrid</h4>
+  <div class="bar-container">
+    <div class="bar-fill engine" style="width: 12.2%;">175</div>
+    <div class="bar-fill art" style="width: 2.8%;">40</div>
+    <div class="bar-fill free" style="width: 85%;">1,225 KB trống</div>
+  </div>
+
+  <div class="callout ok">
+    <strong>✅ Kết luận:</strong> LMoP hoàn toàn khả thi cho 1.44MB ở CẢ 2 hướng.
+    Ngay cả ASCII (nặng nhất) cũng chỉ dùng 130KB art, còn <strong>1.1MB cho content</strong>.
+    <strong>Size KHÔNG phải vấn đề.</strong>
+  </div>
+
+  <h3>📦 Chi tiết art assets (Hướng A: ASCII)</h3>
+  <table>
+    <tr><th>Hạng mục</th><th>Số lượng</th><th>Kích cỡ</th><th>Dung lượng</th></tr>
+    <tr><td>Tiles</td><td>30</td><td>3×3 cell</td><td>~3 KB</td></tr>
+    <tr><td>Quái</td><td>25</td><td>4×4 cell</td><td>~3 KB</td></tr>
+    <tr><td>NPC</td><td>20</td><td>4×4 cell</td><td>~3 KB</td></tr>
+    <tr><td>Vật phẩm</td><td>12</td><td>2×2 cell</td><td>~1 KB</td></tr>
+    <tr><td>Boss</td><td>4</td><td>6×6 cell</td><td>~2 KB</td></tr>
+    <tr><td><strong>Cutscene</strong></td><td>4</td><td>100×50 cell</td><td><strong>~118 KB</strong> ← đắt nhất</td></tr>
+    <tr><td colspan="3"><strong>TỔNG ART</strong></td><td><strong>~130 KB</strong></td></tr>
+  </table>
+
+  <div class="callout warn">
+    <strong>💡 Nhận xét:</strong> Cutscene chiếm 91% art budget. Nếu thay cutscene ASCII bằng
+    text intro (Vietnamese story text), art chỉ còn <strong>~12 KB</strong> → dư thêm 118KB cho content/music.
+  </div>
+</section>
+
+<!-- 13. ROADMAP -->
+<section id="roadmap">
+  <h2>13. 🗺️ Lộ trình làm game</h2>
+  <p class="lead">Dựa trên phân tích LMoP, đây là thứ tự feature cần làm.
+  <strong>Art assets làm cuối cùng</strong> — không phải bottleneck.</p>
+
+  <h3>Phase 1: Nền tảng (để LMoP chơi được)</h3>
+  <table>
+    <tr><th>#</th><th>Feature</th><th>Trạng thái</th><th>Lý do</th></tr>
+    <tr><td>1</td><td><strong>Tilemap loader</strong></td><td><span class="badge warn">Chưa có</span></td><td>Map LMoP có chủ ý, BSP procedural không tái tạo được</td></tr>
+    <tr><td>2</td><td><strong>Hệ thống đối thoại</strong></td><td><span class="badge warn">Chưa có</span></td><td>20 NPC × dialogue = core của Phandalin</td></tr>
+    <tr><td>3</td><td>Plug save/load + resting + death saves</td><td><span class="badge ok">Engine có</span></td><td>Đã wire-up save/load (commit trước). Resting/death saves còn pending</td></tr>
+  </table>
+
+  <h3>Phase 2: Hub thị trấn</h3>
+  <table>
+    <tr><th>#</th><th>Feature</th><th>Trạng thái</th></tr>
+    <tr><td>4</td><td><strong>Cửa hàng / vendor</strong></td><td><span class="badge warn">Chưa có</span></td></tr>
+    <tr><td>5</td><td><strong>Theo dõi quest</strong></td><td><span class="badge warn">Chưa có</span></td></tr>
+    <tr><td>6</td><td>NPC trung lập (không đánh)</td><td><span class="badge warn">Chưa có</span></td></tr>
+  </table>
+
+  <h3>Phase 3: Vùng hoang dã</h3>
+  <table>
+    <tr><th>#</th><th>Feature</th><th>Trạng thái</th></tr>
+    <tr><td>7</td><td>Layout đa vùng (town ↔ wilderness ↔ dungeon)</td><td><span class="badge warn">Chưa có</span></td></tr>
+    <tr><td>8</td><td>Bản đồ thế giới (overworld)</td><td><span class="badge warn">Chưa có</span></td></tr>
+    <tr><td>9</td><td>Encounter ngẫu nhiên</td><td><span class="badge warn">Chưa có</span></td></tr>
+  </table>
+
+  <h3>Phase 4: Hoàn thiện</h3>
+  <table>
+    <tr><th>#</th><th>Feature</th><th>Trạng thái</th></tr>
+    <tr><td>10</td><td><strong>Sprite .xp</strong> (plug vào draw_map)</td><td><span class="badge ok">Tool có sẵn</span></td></tr>
+    <tr><td>11</td><td>Targeting chuột (chọn mục tiêu)</td><td><span class="badge warn">Chưa có</span></td></tr>
+    <tr><td>12</td><td>Concentration check</td><td><span class="badge ok">Engine có</span></td></tr>
+  </table>
+
+  <div class="callout ok">
+    <strong>🎯 Phán quyết cuối:</strong> Art assets (sprite .xp) làm ở <strong>Phase 4</strong> —
+    không phải bottleneck, vì engine + tool <code>sprite_editor.html</code> đã sẵn sàng.
+    <br><br>
+    Bottleneck thực sự là <strong>features</strong>: tilemap loader, đối thoại, quest, vendor.
+    Đây là thứ cần làm <strong>trước</strong> khi lo về art.
+  </div>
+</section>
+
+<footer>
+  <p>📖 <strong>Lost Mine of Phandelver</strong> — Bản dịch Việt cho dự án 144mb RPG</p>
+  <p>Nguồn: D&D 5e Starter Set · Tổng hợp từ AnyFlip, Forgotten Realms Wiki, DM blogs, Reddit</p>
+  <p>📄 Tài liệu gốc (Markdown): <code>docs/lmop/README.md</code>, <code>room-details.md</code>, <code>budget-analysis.md</code></p>
+</footer>
+
+</main>
+</div>
+
+<script>
+// Active nav highlight on scroll
+const sections = document.querySelectorAll('section');
+const navLinks = document.querySelectorAll('nav ol li a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(sec => {
+    const top = sec.offsetTop - 100;
+    if (window.scrollY >= top) current = sec.getAttribute('id');
+  });
+  navLinks.forEach(a => {
+    a.classList.remove('active');
+    if (a.getAttribute('href') === '#' + current) a.classList.add('active');
+  });
+});
+</script>
+
+</body>
+</html>

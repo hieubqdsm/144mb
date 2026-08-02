@@ -39,15 +39,15 @@ void ai_melee_chaser(Actor *self, Actor *all, int n, void (*log)(const char*)){
         AtkResult r = combat_resolve_attack(atk, mod, target_ac, ROLL_NORMAL, &g_r);
         char buf[80];
         if(r.fumble){
-            snprintf(buf, sizeof(buf), "%s tan cong hut (NAT 1).", self->type->name);
+            snprintf(buf, sizeof(buf), "%s tan cong hut (NAT 1).", monster_name(self));
         } else if(r.crit){
             combat_apply_damage(target, r.damage);
-            snprintf(buf, sizeof(buf), "%s CRIT %s %d damage!", self->type->name, target->type->name, r.damage);
+            snprintf(buf, sizeof(buf), "%s CRIT %s %d damage!", monster_name(self), monster_name(target), r.damage);
         } else if(r.hit){
             combat_apply_damage(target, r.damage);
-            snprintf(buf, sizeof(buf), "%s danh %s %d damage.", self->type->name, target->type->name, r.damage);
+            snprintf(buf, sizeof(buf), "%s danh %s %d damage.", monster_name(self), monster_name(target), r.damage);
         } else {
-            snprintf(buf, sizeof(buf), "%s tan cong hut (AC %d).", self->type->name, target->type->ac);
+            snprintf(buf, sizeof(buf), "%s tan cong hut (AC %d).", monster_name(self), target->type->ac);
         }
         log(buf);
         return;
@@ -124,15 +124,15 @@ static void do_attack(Actor *self, Actor *target, int action_idx, void (*log)(co
     AtkResult r = combat_resolve_attack(atk, mod, target_ac, ROLL_NORMAL, &g_r);
     char buf[96];
     if(r.fumble){
-        snprintf(buf, sizeof(buf), "%s tan cong hut (NAT 1).", self->type->name);
+        snprintf(buf, sizeof(buf), "%s tan cong hut (NAT 1).", monster_name(self));
     } else if(r.crit){
         combat_apply_damage(target, r.damage);
-        snprintf(buf, sizeof(buf), "%s CRIT %s %d damage!", self->type->name, target->type->name, r.damage);
+        snprintf(buf, sizeof(buf), "%s CRIT %s %d damage!", monster_name(self), monster_name(target), r.damage);
     } else if(r.hit){
         combat_apply_damage(target, r.damage);
-        snprintf(buf, sizeof(buf), "%s danh %s %d damage.", self->type->name, target->type->name, r.damage);
+        snprintf(buf, sizeof(buf), "%s danh %s %d damage.", monster_name(self), monster_name(target), r.damage);
     } else {
-        snprintf(buf, sizeof(buf), "%s tan cong %s: hut (AC %d).", self->type->name, target->type->name, target->type->ac);
+        snprintf(buf, sizeof(buf), "%s tan cong %s: hut (AC %d).", monster_name(self), monster_name(target), target->type->ac);
     }
     log(buf);
 }
