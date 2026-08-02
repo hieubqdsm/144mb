@@ -33,3 +33,5 @@ tools/*.exe
 *.tmp
 *.bat.tmp
 __pycache__/
+.env
+ai_party/.env

@@ -5,17 +5,14 @@ Hỗ trợ Claude / GPT / Gemini / bất kỳ API nào tương thích OpenAI cha
 Qua function calling để LLM đưa INTENT JSON thay vì free text.
 
 Cách dùng:
-    client = LLMClient(model="gpt-4o-mini", api_key=os.environ["OPENAI_API_KEY"])
-    # HOẶC dùng Claude qua Anthropic (cần base_url proxy hoặc Anthropic SDK)
-    response = client.chat(system="...", messages=[...], tools=[...])
+    1. Tạo file ai_party/.env (copy từ .env.example, điền key thật)
+    2. python flow_sim.py --llm
+    Code tự load .env (không cần cài python-dotenv).
 
-Config qua env var:
+Config qua .env (tự load) HOẶC env var:
     - LLM_API_KEY    : API key (bắt buộc cho LLM mode)
     - LLM_MODEL      : model name (default "gpt-4o-mini")
-    - LLM_BASE_URL   : base URL (default OpenAI; đổi cho proxy/local)
-
- KHÔNG cài thư viện: dùng urllib stdlib (tránh phụ thuộc requests/openai).
- Nếu có requests thì ưu tiên dùng (đáng tin hơn).
+    - LLM_BASE_URL   : base URL (default OpenAI; đổi cho proxy/local/Ollama)
 """
 
 import os
@@ -23,6 +20,36 @@ import json
 import urllib.request
 import urllib.error
 from typing import Optional
+
+
+# =============================================================================
+# .ENV LOADER - tự parse, không cần python-dotenv package
+# =============================================================================
+
+def _load_dotenv(path: str = None):
+    """Load file .env (KEY=value per line) vào os.environ.
+    Không ghi đè env var đã có sẵn (env var thật ưu tiên hơn file)."""
+    if path is None:
+        # Tìm .env cùng thư mục file này
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            # Skip comment / empty
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")  # bỏ quote nếu có
+            if key and key not in os.environ:   # KHÔNG ghi đè env thật
+                os.environ[key] = val
+
+# Load ngay khi import
+_load_dotenv()
 
 
 class LLMClient:
