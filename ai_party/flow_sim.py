@@ -379,9 +379,10 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
     max_rounds = 20
     while state.round <= max_rounds and not state.combat_over:
         print(f"\n  ── ROUND {state.round} ──")
-        # Reset reaction_used đầu mỗi round (D&D 5e)
+        # Reset reaction_used + move_left đầu mỗi round (D&D 5e)
         for a in state.actors:
             a.reaction_used = False
+            a.move_left = 6   # 30ft = 6 squares (default speed)
         # Hiện tình trạng trận đấu (distance description)
         foes_alive = [a for a in state.actors if a.alive and a.team == "monsters"]
         if foes_alive and state.round <= 2:
@@ -402,17 +403,12 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                 d = deciders[actor.name]
                 action = d.decide_combat(state, actor)
             else:
-                # Monster AI: move toward nearest party + attack khi adjacent
+                # Monster AI: attack nearest (engine auto-move-then-attack)
                 targets = [a for a in state.actors if a.alive and a.team != actor.team]
                 if not targets:
                     continue
                 target = min(targets, key=lambda a: distance_ft(actor, a))
-                if in_melee_range(actor, target):
-                    action = make_action("attack", target=target.name)
-                else:
-                    # Step toward target
-                    action = make_action("move", target=target.name,
-                                         say=f"{actor.name} tiến lại gần {target.name}")
+                action = make_action("attack", target=target.name)
 
             # Show chat
             if action.get("say"):
@@ -431,11 +427,25 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
             if a["verb"] == "attack":
                 target = next((x for x in state.actors if x.name == a["target"]), None)
                 if target:
-                    # Range check
+                    # Auto-move-then-attack: nếu xa, tự move tới (dùng speed) rồi attack
                     if not in_melee_range(actor, target):
-                        print(f"  ⚠️ {actor.name} quá xa {target.name} ({distance_ft(actor,target)}ft) — cần move tới trước!")
+                        moved = 0
+                        max_move = getattr(actor, "move_left", 6) or 6
+                        while not in_melee_range(actor, target) and moved < max_move:
+                            mr = step_toward(actor, target, state.actors, rng)
+                            if not mr.get("ok"):
+                                break
+                            print(f"  🏃 {actor.name} move {mr['from']}→{mr['to']}")
+                            for opp in mr.get("opportunity_attacks", []):
+                                opr = opp["result"]
+                                tag = "HIT" if opr.get("hit") else "miss"
+                                print(f"  ⚔️ OPP ATTACK {opp['attacker']} → {actor.name}: {tag} {opr.get('damage',0)}dmg")
+                            moved += 1
                         pause()
-                        continue
+                        if not in_melee_range(actor, target):
+                            print(f"  ⚠️ {actor.name} hết movement, chưa tới {target.name} ({distance_ft(actor,target)}ft)")
+                            pause()
+                            continue
                     r = resolve_attack(actor, target, rng)
                     state.log.append(r)
                     tag = "💥 CRIT" if r["crit"] else ("⚔️ HIT" if r["hit"] else "💨 miss")
@@ -526,7 +536,7 @@ def handle_travel(node: SceneNode, party, rng, deciders):
 
     if result["spotted"]:
         player_say("Bjorn", "Khoan! Tôi thấy bóng trong lùm cây... Goblins!")
-        dm_say("Đội giành инициатив. Goblin chưa kịp phục kích trọn vẹn.")
+        dm_say("Đội giành sáng kiến. Goblin chưa kịp phục kích trọn vẹn.")
         return {"spotted": True, "next": node.on_spotted,
                 "party_surprised": []}
     else:
