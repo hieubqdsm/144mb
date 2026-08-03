@@ -80,11 +80,89 @@ class LLMClient:
 
         messages = [{"role": "user"|"assistant", "content": "..."}]
         tools = [{"type":"function", "function":{"name", "description", "parameters":{...}}}]
+
+        Tự detect format dựa base_url:
+          - .../anthropic → Anthropic /v1/messages + x-api-key
+          - .../v4 or /v1 → OpenAI /chat/completions + Bearer
         """
         if not self.api_key:
             return {"content": "", "tool_calls": [], "raw": {},
                     "error": "no API key"}
 
+        # Detect format từ base_url
+        is_anthropic = "anthropic" in self.base_url
+
+        if is_anthropic:
+            return self._chat_anthropic(system, messages, tools, tool_choice)
+        return self._chat_openai(system, messages, tools, tool_choice)
+
+    def _chat_anthropic(self, system, messages, tools, tool_choice):
+        """Gọi theo Anthropic Messages API (/v1/messages)."""
+        url = f"{self.base_url}/v1/messages"
+        # Anthropic: system riêng, messages chỉ user/assistant
+        payload = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": system,
+            "messages": messages,
+        }
+        # Anthropic tools format khác OpenAI: {name, description, input_schema}
+        if tools:
+            anth_tools = []
+            for t in tools:
+                fn = t.get("function", t)
+                anth_tools.append({
+                    "name": fn["name"],
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                })
+            payload["tools"] = anth_tools
+            if tool_choice and "function" in tool_choice:
+                payload["tool_choice"] = {"type": "tool", "name": tool_choice["function"]["name"]}
+            elif tool_choice:
+                payload["tool_choice"] = {"type": "any"}
+
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("x-api-key", self.api_key)
+        req.add_header("anthropic-version", "2023-06-01")
+
+        self.calls += 1
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode("utf-8", errors="replace")
+            return {"content": "", "tool_calls": [], "raw": {},
+                    "error": f"HTTP {e.code}: {err_body[:200]}"}
+        except Exception as e:
+            return {"content": "", "tool_calls": [], "raw": {},
+                    "error": str(e)}
+
+        # Parse Anthropic response: content[] có thể có type=text hoặc type=tool_use
+        content_text = ""
+        tool_calls = []
+        for block in raw.get("content", []):
+            if block.get("type") == "text":
+                content_text += block.get("text", "")
+            elif block.get("type") == "tool_use":
+                tool_calls.append({
+                    "id": block.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": block.get("name", ""),
+                        "arguments": json.dumps(block.get("input", {}), ensure_ascii=False),
+                    }
+                })
+        if tools and not tool_calls:
+            import sys
+            print(f"    [DEBUG-ANTHROPIC] No tool_use. Content: {content_text[:200]}", file=sys.stderr)
+        return {"content": content_text, "tool_calls": tool_calls, "raw": raw,
+                "error": None}
+
+    def _chat_openai(self, system, messages, tools, tool_choice):
+        """Gọi theo OpenAI Chat Completions (/chat/completions)."""
         url = f"{self.base_url}/chat/completions"
         payload = {
             "model": self.model,
@@ -117,10 +195,9 @@ class LLMClient:
         choice = raw.get("choices", [{}])[0].get("message", {})
         content = choice.get("content", "") or ""
         tool_calls = choice.get("tool_calls", []) or []
-        # DEBUG: log raw response khi có tools (để xem GLM trả gì)
         if tools and not tool_calls:
             import sys
-            print(f"    [DEBUG] LLM returned no tool_calls. Raw message: {json.dumps(choice, ensure_ascii=False)[:300]}", file=sys.stderr)
+            print(f"    [DEBUG-OPENAI] No tool_calls. Raw message: {json.dumps(choice, ensure_ascii=False)[:300]}", file=sys.stderr)
         return {"content": content, "tool_calls": tool_calls, "raw": raw,
                 "error": None}
 
