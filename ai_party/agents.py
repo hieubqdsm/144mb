@@ -151,6 +151,34 @@ def make_monsters() -> list:
               stealth_bonus=6),
     ]
 
+def make_redbrands(count=3) -> list:
+    """Redbrand Ruffian - CR 1/2, AC 14, HP 16. Shortsword."""
+    out = []
+    for i in range(count):
+        out.append(Actor(f"Redbrand {chr(65+i)}", "monsters", hp=16, max_hp=16, ac=14,
+                         atk_bonus=4, damage_dice="1d6+2", glyph="R",
+                         str_score=11, dex_score=14, con_score=12, int_score=9,
+                         wis_score=9, cha_score=11))
+    return out
+
+def make_skeletons(count=3) -> list:
+    """Skeleton - CR 1/4, AC 13, HP 11. Shortsword + Shortbow."""
+    out = []
+    for i in range(count):
+        out.append(Actor(f"Skeleton {chr(65+i)}", "monsters", hp=11, max_hp=11, ac=13,
+                         atk_bonus=4, damage_dice="1d6+2", glyph="s",
+                         str_score=10, dex_score=14, con_score=15, int_score=6,
+                         wis_score=8, cha_score=5))
+    return out
+
+def make_glasstaff() -> list:
+    """Iarno 'Glasstaff' Albrek - CR 2 wizard boss.
+    AC 11 (14 mage armor), HP 27. Spider Staff + spells."""
+    return [Actor("Iarno Glasstaff", "monsters", hp=27, max_hp=27, ac=14,
+                  atk_bonus=5, damage_dice="1d6+3", glyph="I",
+                  str_score=9, dex_score=13, con_score=10, int_score=16,
+                  wis_score=14, cha_score=13)]
+
 
 def run_combat(seed: int = 42, max_rounds: int = 20):
     """Combat loop - mỗi round mỗi actor đi 1 lần theo initiative."""

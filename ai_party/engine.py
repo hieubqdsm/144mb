@@ -275,6 +275,16 @@ LOOT_TABLES = {
         {"type": "item", "name": "Potion of Healing x2", "chance": 1.0},
         {"type": "item", "name": "Lionshield Supplies", "chance": 1.0},
     ],
+    "redbrand": [
+        {"type": "gold", "dice": "2d6", "min": 2, "chance": 0.7},
+        {"type": "item", "name": "Healing Potion", "chance": 0.15},
+    ],
+    "glasstaff": [   # Iarno's chest
+        {"type": "gold", "dice": "10d6+50", "min": 50, "chance": 1.0},
+        {"type": "item", "name": "Spider Staff", "chance": 1.0},
+        {"type": "item", "name": "Scroll of Charm Person", "chance": 1.0},
+        {"type": "item", "name": "Scroll of Fireball", "chance": 1.0},
+    ],
 }
 
 

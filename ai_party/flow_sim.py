@@ -28,7 +28,7 @@ from engine import (Actor, GameState, resolve_attack, d20, add_init,
                     cast_spell, resolve_move, step_toward, SPELLS, list_spells_for_class)
 from campaign import NODES, get_node, next_after_action, SceneNode
 from protocol import validate_action, make_action, parse_llm_json
-from agents import make_party, make_monsters
+from agents import make_party, make_monsters, make_redbrands, make_skeletons, make_glasstaff
 
 # Global config (set từ CLI args)
 G_SPEED = 1.5      # delay giây giữa turn/scene
@@ -327,13 +327,23 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
     """
     party_surprised = party_surprised or []
 
-    # Spawn monsters
-    monsters = make_monsters()[:node.monster_count]
-    # Scale nếu count khác default
-    while len(monsters) < node.monster_count:
-        monsters.append(Actor(f"Goblin {chr(65+len(monsters))}", "monsters",
-                              hp=7, max_hp=7, ac=15, atk_bonus=4, damage_dice="1d6+2",
-                              glyph="g", dex_score=14, wis_score=8, stealth_bonus=6))
+    # Spawn monsters theo node.monster_type
+    mt = node.monster_type or "goblin"
+    mc = node.monster_count or 4
+    if mt == "goblin":
+        monsters = make_monsters()[:mc]
+        while len(monsters) < mc:
+            monsters.append(Actor(f"Goblin {chr(65+len(monsters))}", "monsters",
+                                  hp=7, max_hp=7, ac=15, atk_bonus=4, damage_dice="1d6+2",
+                                  glyph="g", dex_score=14, wis_score=8, stealth_bonus=6))
+    elif mt == "redbrand":
+        monsters = make_redbrands(mc)
+    elif mt == "skeleton":
+        monsters = make_skeletons(mc)
+    elif mt == "glasstaff":
+        monsters = make_glasstaff()
+    else:
+        monsters = make_monsters()[:mc]
 
     # Setup positions trên grid (party bên trái, monsters bên phải)
     # Party: cột 0-2, hàng 0-3. Monsters: cột 8-12, hàng 0-3
@@ -544,7 +554,7 @@ def handle_travel(node: SceneNode, party, rng, deciders):
     dm_say(node.narration)
     pause()
     # Ẩn: DM roll perception vs stealth
-    monsters = make_monsters()[:node.monster_count or 4]
+    monsters = make_monsters()[:node.monster_count or 4]   # ambush = goblins
     result = roll_surprise(party, monsters, rng, node.stealth_bonus)
     engine_log(f"Passive Perception team: {max(a.passive_perception() for a in party)}")
     engine_log(f"Monster Stealth roll: {result['monster_stealth_roll']} (d20+{node.stealth_bonus})")

@@ -149,6 +149,183 @@ NODES = {
         next="end_demo",
     ),
 
+    # === CHAPTER 2: REDBRAND HIDEOUT (dưới Tresendar Manor) ===
+    "tresendar_manor": SceneNode(
+        node_id="tresendar_manor",
+        scene_type="INTRO",
+        title="Tresendar Manor — Cánh cửa hầm",
+        narration=(
+            "Team tới Tresendar Manor — dinh thự cổ bỏ hoang ở rìa đông Phandalin. "
+            "Bụi rậm bao phủ, tường đá rêu phong. Carp (con trai Qellene) đã chỉ "
+            "đường hầm bí mật trong bụi cây.\n\n"
+            "Team lách qua khe hẹp, xuống hầm tối. Mùi ẩm mốc, tiếng nước nhỏ giọt. "
+            "Đây là sào huyệt Redbrand — băng côn đồ áo choàng đỏ khủng bố thị trấn."
+        ),
+        next="redbrand_cellar",
+    ),
+
+    "redbrand_cellar": SceneNode(
+        node_id="redbrand_cellar",
+        scene_type="TRAVEL",
+        title="Hầm rượu — Bẫy hố",
+        narration=(
+            "Hầm rượu tối om, thùng beer xếp dọc tường. Bể nước trong góc "
+            "giấu túi chống nước (Potion of Invisibility). \n\n"
+            "Đi qua hành lang, Lyra phát hiện viên đá lỏng lẻo — BẪY HỐ! "
+            "(DM đang âm thầm thả d20 check Perception của cả team...)"
+        ),
+        perception_dc=13,
+        stealth_bonus=0,    # trap, không phải monster stealth
+        on_spotted="redbrand_barracks",
+        on_surprised="redbrand_trap_hit",
+        next="redbrand_barracks",
+    ),
+
+    "redbrand_trap_hit": SceneNode(
+        node_id="redbrand_trap_hit",
+        scene_type="INTRO",
+        title="Bẫy hố kích hoạt!",
+        narration=(
+            "Team không phát hiện bẫy! Viên đá lún xuống, lộ hố sâu 10ft. "
+            "Ai đi đầu rơi xuống, mất 1d6 damage (bludgeoning).\n\n"
+            "Tiếng động vang khắp hầm — Redbrand biết team tới!"
+        ),
+        next="redbrand_barracks_alerted",
+    ),
+
+    "redbrand_barracks": SceneNode(
+        node_id="redbrand_barracks",
+        scene_type="COMBAT",
+        title="Phòng lính Redbrand",
+        narration=(
+            "Phòng có giường đôi, thùng gỗ. 3 tên Redbrand Ruffian đang chơi bài. "
+            "Chúng vồ vũ khí khi thấy team!\n\n"
+            "3 Redbrand Ruffian (AC 14, HP 16, CR 1/2). "
+            "Chúng chưa kịp phản ứng đầy đủ."
+        ),
+        monster_type="redbrand",
+        monster_count=3,
+        next="redbrand_loot",
+    ),
+
+    "redbrand_barracks_alerted": SceneNode(
+        node_id="redbrand_barracks_alerted",
+        scene_type="COMBAT",
+        title="Phòng lính Redbrand — Bị phát hiện!",
+        narration=(
+            "Tiếng bẫy đánh thức 3 tên Redbrand Ruffian! Chúng đã sẵn sàng vũ khí, "
+            "đợi team ở cửa phòng.\n\n"
+            "3 Redbrand Ruffian (AC 14, HP 16, CR 1/2). "
+            "Team có thể bị bao vây ở cửa vào!"
+        ),
+        monster_type="redbrand",
+        monster_count=3,
+        next="redbrand_loot",
+    ),
+
+    "redbrand_loot": SceneNode(
+        node_id="redbrand_loot",
+        scene_type="LOOT",
+        title="Loot phòng lính",
+        narration=(
+            "Sau khi hạ 3 Redbrand, team lục phòng. "
+            "Tiền đồng, áo choàng đỏ, vài lọ thuốc."
+        ),
+        loot_source="redbrand",
+        next="redbrand_crypt",
+    ),
+
+    "redbrand_crypt": SceneNode(
+        node_id="redbrand_crypt",
+        scene_type="COMBAT",
+        title="Crypt Tresendar — Xác sống!",
+        narration=(
+            "Team vào khu lăng mộ cổ. 3 quan tài đá (sarcophagi) mở nắp. "
+            "Bên trong, BỘ XƯƠNG SỐNG chổi dậy! Mắt hố rỗng phát sáng xanh lạnh.\n\n"
+            "3 Skeleton (AC 13, HP 11, CR 1/4). Chúng cầm kiếm gỉ."
+        ),
+        monster_type="skeleton",
+        monster_count=3,
+        next="redbrand_slave_pens",
+    ),
+
+    "redbrand_slave_pens": SceneNode(
+        node_id="redbrand_slave_pens",
+        scene_type="COMBAT",
+        title="Chuồng nô lệ — Cứu Mirna",
+        narration=(
+            "Cell chia bằng thanh sắt. 2 tên Redbrand canh gác. "
+            "Bên trong, Mirna Dendrar + 2 con (Nars, Nilsa) — vợ/con Thel Dendrar "
+            "bắt cóc sau khi Redbrand giết chồng.\n\n"
+            "2 Redbrand Ruffian canh tù nhân. Phải cứu Mirna!"
+        ),
+        monster_type="redbrand",
+        monster_count=2,
+        next="redbrand_glasstaff",
+    ),
+
+    "redbrand_glasstaff": SceneNode(
+        node_id="redbrand_glasstaff",
+        scene_type="COMBAT",
+        title="Phòng Glasstaff — Boss Iarno Albrek",
+        narration=(
+            "Phòng làm việc sang trọng giữa hầm bẩn thỉu. "
+            "Iarno 'Glasstaff' Albrek — pháp sư phản bội Lords' Alliance — "
+            "đứng sau bàn đọc sách.\n\n"
+            "Hắn quay lại, cầm Spider Staff (gậy thủy tinh nhện). "
+            "'Vậy các ngươi tới rồi. Black Spider đã báo trước.'\n\n"
+            "Iarno (AC 11/14 mage armor, HP 27, CR 2). "
+            "Boss cuối Redbrand Hideout!"
+        ),
+        monster_type="glasstaff",
+        monster_count=1,
+        next="redbrand_glasstaff_loot",
+    ),
+
+    "redbrand_glasstaff_loot": SceneNode(
+        node_id="redbrand_glasstaff_loot",
+        scene_type="LOOT",
+        title="Loot Glasstaff — Kho báu lớn",
+        narration=(
+            "Sau khi hạ Iarno, team lục phòng. Rương gỗ khóa kỹ. "
+            "Trên bàn, bức thư ký hiệu Nhện Đen — bằng chứng Iarno làm việc cho ai!"
+        ),
+        loot_source="glasstaff",
+        next="redbrand_mirna_reward",
+    ),
+
+    "redbrand_mirna_reward": SceneNode(
+        node_id="redbrand_mirna_reward",
+        scene_type="INTRO",
+        title="Mirna Dendrar — Lời cảm ơn",
+        narration=(
+            "Mirna Dendrar khóc nức nở: 'Cảm ơn các anh hùng! "
+            "Chồng tôi đã chết bảo vệ thị trấn. Các ngươi đã trả thù cho ông ấy.'\n\n"
+            "'Nhà tôi có một thứ cho các ngươi. Vị trí viên đá phát sáng, "
+            "trong hang sâu phía bắc. Hãy tìm nó.'\n\n"
+            "Team cũng tìm bức thư Black Spider: "
+            "'Lord Albrek, kẻ lạ sắp tới Phandalin. Bắt chúng nếu được, "
+            "giết nếu phải. Mọi bản đồ người lùn phải giao ta. — Nhện Đen'"
+        ),
+        next="end_chapter2",
+    ),
+
+    "end_chapter2": SceneNode(
+        node_id="end_chapter2",
+        scene_type="END",
+        title="Hết Chương 2 — Redbrand Hideout hoàn thành",
+        narration=(
+            "Team rời Tresendar Manor, mang theo:\n"
+            "- Spider Staff (vũ khí phép từ Iarno)\n"
+            "- Bức thư Black Spider (bằng chứng cốt truyện)\n"
+            "- Thông tin từ Mirna (viên đá phát sáng)\n"
+            "- Quest hoàn thành: Halia trả 100gp, Sildar trả 200gp\n\n"
+            "Flow simulator kết thúc Chương 2. "
+            "LMoP thật sẽ tiếp tục Chương 3: The Spider's Web."
+        ),
+        next="",
+    ),
+
     "end_demo": SceneNode(
         node_id="end_demo",
         scene_type="END",
@@ -178,6 +355,6 @@ def next_after_action(node: SceneNode, action_result: dict) -> str:
     if node.scene_type == "TOWN":
         choice = action_result.get("chosen")
         if choice == "leave_town":
-            return "end_demo"
-        return node.node_id   # ở lại town (chưa map NPC sub-node)
+            return "tresendar_manor"   # Chương 2: Redbrand Hideout
+        return node.node_id   # ở lại town
     return node.next
