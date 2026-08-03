@@ -13,9 +13,12 @@ Cách chạy:
   python flow_sim.py              # mock mode (heuristic bot)
   python flow_sim.py --llm        # LLM mode (cần API key)
   python flow_sim.py --seed 42    # deterministic
+  python flow_sim.py --speed 2.0  # delay 2s giữa turn (default 1.5)
+  python flow_sim.py --discuss    # thêm phase thảo luận team trước combat
 """
 
 import sys
+import time
 import random
 import argparse
 
@@ -24,6 +27,20 @@ from engine import (Actor, GameState, resolve_attack, d20, add_init,
 from campaign import NODES, get_node, next_after_action, SceneNode
 from protocol import validate_action, make_action, parse_llm_json
 from agents import make_party, make_monsters
+
+# Global config (set từ CLI args)
+G_SPEED = 1.5      # delay giây giữa turn/scene
+G_DISCUSS = False  # thêm phase thảo luận
+
+
+# =============================================================================
+# DELAY HELPER - cho user kịp đọc
+# =============================================================================
+
+def pause():
+    """Delay giữa turn/scene để user kịp đọc. Bỏ qua nếu G_SPEED=0."""
+    if G_SPEED > 0:
+        time.sleep(G_SPEED)
 
 
 # =============================================================================
@@ -262,15 +279,53 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
     engine_log(f"Initiative: {[(a.name, a.init) for a in state.actors]}")
     if party_surprised:
         engine_log(f"Party bị SURPRISE: {party_surprised} (mất turn round 1)")
+    pause()
+
+    # Phase thảo luận: trước round 1, mỗi hero nói 1 câu chiến thuật
+    if G_DISCUSS:
+        print("\n  ── TEAM THẢO LUẬN ──")
+        for a in party:
+            if not a.alive:
+                continue
+            d = deciders[a.name]
+            foes = [x.name for x in state.actors if x.alive and x.team == "monsters"]
+            # Hero góp ý chiến thuật (dùng personality hoặc LLM)
+            if hasattr(d, "llm") and d.llm and d.llm.is_available():
+                try:
+                    from llm_client import TOOL_COMBAT_ACTION
+                    resp = d.llm.chat(d._build_system(),
+                        [{"role":"user","content":f"Combat sắp bắt đầu. {len(foes)} kẻ địch: {foes}. Nói 1 câu chiến thuật cho team (dùng field say)."}],
+                        tools=[TOOL_COMBAT_ACTION])
+                    for tc in resp.get("tool_calls", []):
+                        from protocol import parse_llm_json
+                        parsed = parse_llm_json(tc.get("function",{}).get("arguments","{}")) or {}
+                        if parsed.get("say"):
+                            player_say(a.name, parsed["say"])
+                            break
+                    else:
+                        player_say(a.name, f"Chuẩn bị chiến đấu với {foes[0]}!")
+                except Exception:
+                    player_say(a.name, "Sẵn sàng!")
+            else:
+                # Mock: personality chat
+                tactics = {"Thorin": "Tôi sẽ giữ tên mạnh nhất!",
+                           "Elara": f"Tập trung phép vào {foes[0]}.",
+                           "Lyra": "Cẩn thận bọn chúng phản công.",
+                           "Bjorn": "Sẵn sàng chữa thương nếu cần."}
+                player_say(a.name, tactics.get(a.name, "Sẵn sàng!"))
+            pause()
+        print("  ── HẾT THẢO LUẬN ──\n")
 
     max_rounds = 20
     while state.round <= max_rounds and not state.combat_over:
+        print(f"\n  ── ROUND {state.round} ──")
         for actor in list(state.actors):
             if not actor.alive or state.combat_over:
                 continue
             # Skip nếu surprised ở round 1
             if state.round == 1 and actor.name in party_surprised:
                 print(f"  😴 {actor.name} bị surprise, bỏ qua turn này.")
+                pause()
                 continue
 
             # Player hoặc monster decide
@@ -304,6 +359,7 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                     tag = "💥 CRIT" if r["crit"] else ("⚔️ HIT" if r["hit"] else "💨 miss")
                     print(f"  {tag} {actor.name} → {target.name}: "
                           f"{r['damage']}dmg (HP {r['target_hp_after']}/{target.max_hp})")
+            pause()
 
             winner = state.check_combat_over()
             if winner:
@@ -322,10 +378,12 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
 
 def handle_intro(node: SceneNode, party, rng, deciders):
     dm_say(node.narration)
+    pause()
     return {"next": node.next}
 
 def handle_travel(node: SceneNode, party, rng, deciders):
     dm_say(node.narration)
+    pause()
     # Ẩn: DM roll perception vs stealth
     monsters = make_monsters()[:node.monster_count or 4]
     result = roll_surprise(party, monsters, rng, node.stealth_bonus)
@@ -350,6 +408,7 @@ def handle_combat(node: SceneNode, party, rng, deciders, party_surprised=None):
 
 def handle_loot(node: SceneNode, party, rng, deciders):
     dm_say(node.narration)
+    pause()
     loot = gen_loot(node.loot_source, 4, rng)
     engine_log(f"Loot roll: {loot['gold']} gold + {len(loot['items'])} items")
     # Dùng engine offer_loot_to_party: AI chọn take/leave/give_to, engine update inventory
@@ -357,23 +416,28 @@ def handle_loot(node: SceneNode, party, rng, deciders):
     dist = offer_loot_to_party(party, loot, d.decide_loot)
     for entry in dist["distributed"]:
         player_say(entry["actor"], f"Nhận: {entry['item']}")
+        pause()
     for item in dist["left_items"]:
         player_say("Lyra", f"Bỏ qua: {item['name']}")
     if dist["total_gold"] > 0:
         engine_log(f"Mỗi thành viên nhận {dist['gold_each']} gold (tổng {dist['total_gold']}).")
+    pause()
     return {"loot": loot, "next": node.next}
 
 def handle_town(node: SceneNode, party, rng, deciders):
     dm_say(node.narration)
+    pause()
     print("\n  Lựa chọn:")
     for i, c in enumerate(node.choices):
         print(f"    {i+1}. {c['label']}")
+    pause()
     # AI chọn (demo: decider đầu tiên chọn)
     d = deciders[party[0].name]
     decision = d.decide_town_choice(node.choices)
     chosen = decision["chosen"]
     chosen_label = next(c["label"] for c in node.choices if c["id"] == chosen)
     player_say(party[0].name, f"Tôi chọn: {chosen_label}")
+    pause()
     return {"chosen": chosen, "next": next_after_action(node, {"chosen": chosen})}
 
 def handle_end(node: SceneNode, party, rng, deciders):
@@ -472,5 +536,13 @@ if __name__ == "__main__":
                         help="Dùng LLM thật (cần API key). Default: mock heuristic.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed (default 42)")
     parser.add_argument("--start", default="neverwinter_inn", help="Node bắt đầu")
+    parser.add_argument("--speed", type=float, default=1.5,
+                        help="Delay giây giữa turn/scene (default 1.5, 0=không delay)")
+    parser.add_argument("--discuss", action="store_true",
+                        help="Thêm phase thảo luận team trước combat")
     args = parser.parse_args()
+    # Update global config (module-level, không cần global keyword ở __main__)
+    import __main__
+    __main__.G_SPEED = args.speed
+    __main__.G_DISCUSS = args.discuss
     run_flow(start_node_id=args.start, seed=args.seed, use_llm=args.llm)
