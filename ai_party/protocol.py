@@ -22,6 +22,9 @@ TOWN_VERBS = {"talk", "shop", "rest", "leave", "say"}
 LOOT_VERBS = {"take", "leave", "give_to", "say"}
 TRAVEL_VERBS = {"continue", "search", "say"}
 
+# Verbs cần target
+VERBS_NEED_TARGET = {"attack", "cast"}
+
 
 def make_action(verb: str, target: str = None, args: dict = None,
                 say: str = None) -> dict:
@@ -66,8 +69,16 @@ def validate_action(action: dict, valid_verbs: set, state_snapshot: dict) -> dic
     if verb == "attack" and not cleaned.get("target"):
         return {"ok": False, "error": "attack cần target", "action": None}
 
-    if verb == "cast" and not cleaned.get("args", {}).get("spell"):
-        return {"ok": False, "error": "cast cần args.spell", "action": None}
+    if verb == "cast":
+        if not cleaned.get("args", {}).get("spell"):
+            return {"ok": False, "error": "cast cần args.spell (tên spell)", "action": None}
+        if not cleaned.get("target"):
+            return {"ok": False, "error": "cast cần target (ai bị phép)", "action": None}
+
+    if verb == "move":
+        args = cleaned.get("args", {})
+        if not args.get("dx") and not args.get("dy") and not cleaned.get("target"):
+            return {"ok": False, "error": "move cần args.dx/dy HOẶC target (approach)", "action": None}
 
     if verb == "talk" and not cleaned.get("target"):
         return {"ok": False, "error": "talk cần target (NPC name)", "action": None}

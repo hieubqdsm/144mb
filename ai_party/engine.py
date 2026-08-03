@@ -49,6 +49,7 @@ class Actor:
     stealth_bonus: int = 0         # +6 goblin, +0 mặc định
     inventory: list = field(default_factory=list)  # [{name, qty, type}]
     surprised: bool = False        # D&D 5e: surprised = mất turn đầu
+    reaction_used: bool = False    # D&D 5e: 1 reaction/round (cho opp attack)
 
     def ability_mod(self, ability: str) -> int:
         """Mod = floor((score-10)/2). ability = 'str'|'dex'|'con'|'int'|'wis'|'cha'."""
@@ -341,3 +342,283 @@ def resolve_choice(options: list, ai_decider) -> str:
     if chosen_id not in valid_ids:
         chosen_id = options[0]["id"]   # fallback default
     return chosen_id
+
+
+# =============================================================================
+# DISTANCE HELPERS - D&D 5e grid (5ft = 1 square)
+# =============================================================================
+
+def chebyshev(a, b) -> int:
+    """Khoảng cách melee (max(dx,dy)). Dùng cho adjacency check.
+    Chebyshev ≤ 1 = adjacent (trong 5ft)."""
+    return max(abs(a.pos[0]-b.pos[0]), abs(a.pos[1]-b.pos[1]))
+
+def manhattan(a, b) -> int:
+    """Khoảng cách di chuyển (|dx|+|dy|). Dùng cho movement calc."""
+    return abs(a.pos[0]-b.pos[0]) + abs(a.pos[1]-b.pos[1])
+
+def distance_ft(a, b) -> int:
+    """Khoảng cách feet (mỗi cell = 5ft). Dùng cho range check."""
+    return chebyshev(a, b) * 5
+
+def in_melee_range(a, b) -> bool:
+    """Có trong tầm melee (5ft) không."""
+    return chebyshev(a, b) <= 1
+
+def in_range(a, b, range_ft) -> bool:
+    """Có trong tầm bắn không. range_ft = 0 = melee only."""
+    if range_ft <= 0:
+        return in_melee_range(a, b)
+    return distance_ft(a, b) <= range_ft
+
+def threatens(attacker, target) -> bool:
+    """Attacker có đe dọa target (opportunity attack range) không?
+    D&D 5e: melee range + không incapacitated."""
+    if not attacker.alive or not target.alive:
+        return False
+    if attacker.team == target.team:
+        return False
+    return in_melee_range(attacker, target)
+
+
+# =============================================================================
+# SPELL SYSTEM - port từ src_console/data/spells.c + spell_resolve.c
+# =============================================================================
+
+@dataclass
+class SpellDef:
+    """Tương đương SpellDef trong spells.h."""
+    name: str
+    level: int              # 0 = cantrip
+    kind: str               # atk_ranged|magic_missile|save_half|buff_ac|heal|poison|stun
+    damage: str             # dice spec "1d10"
+    save: str = None        # "dex"|"con"|"wis"|None
+    ac_bonus: int = 0       # for buff_ac
+    aoe: bool = False       # True = area effect (nhiều target)
+    aoe_ft: int = 0         # radius feet (cho AoE)
+    description: str = ""   # cho LLM biết hiệu ứng
+
+# Bang spells (port từ C + thêm Burning Hands AoE)
+SPELLS = {
+    "fire_bolt": SpellDef("Fire Bolt", 0, "atk_ranged", "1d10",
+                          description="Tia lửa ranged, roll vs AC."),
+    "magic_missile": SpellDef("Magic Missile", 1, "magic_missile", "3d4+3",
+                              description="3 mũi tên force, auto-hit."),
+    "fireball": SpellDef("Fireball", 3, "save_half", "8d6", save="dex",
+                         aoe=True, aoe_ft=20,
+                         description="Cầu lửa AoE 20ft, save DEX half."),
+    "mage_armor": SpellDef("Mage Armor", 1, "buff_ac", "0d1", ac_bonus=3,
+                           description="Buff +3 AC lên caster."),
+    "cure_wounds": SpellDef("Cure Wounds", 1, "heal", "1d8+3",
+                            description="Hồi máu 1d8+3 cho target."),
+    "poison_spray": SpellDef("Poison Spray", 0, "poison", "1d12", save="con",
+                             description="Save CON hoặc poison DOT."),
+    "hold_person": SpellDef("Hold Person", 2, "stun", "0d1", save="wis",
+                            description="Save WIS hoặc stunned (mất turn)."),
+    # MỚI - AoE spells mà LLM hay muốn dùng
+    "burning_hands": SpellDef("Burning Hands", 1, "save_half", "3d6", save="dex",
+                              aoe=True, aoe_ft=15,
+                              description="Cone lửa AoE 15ft, save DEX half."),
+    "sacred_flame": SpellDef("Sacred Flame", 0, "save_half", "1d8", save="dex",
+                             description="Ánh sáng thần thánh, save DEX half."),
+    "healing_word": SpellDef("Healing Word", 1, "heal", "1d4+3",
+                             description="Hồi máu 1d4+3, bonus action."),
+}
+
+def list_spells_for_class(char_class: str) -> list:
+    """Trả list spell ID phù hợp class (cho LLM biết cast được gì)."""
+    spell_lists = {
+        "Fighter": ["fire_bolt"],  # Fighter không có phép (Eldritch Knight sau)
+        "Wizard": ["fire_bolt", "magic_missile", "burning_hands", "mage_armor"],
+        "Cleric": ["sacred_flame", "cure_wounds", "healing_word", "hold_person"],
+        "Rogue": [],  # Rogue (Arcane Trickster sau)
+    }
+    return spell_lists.get(char_class, [])
+
+
+def cast_spell(spell_id: str, caster: Actor, target: Actor,
+               all_actors: list, rng: random.Random, dc: int = 13) -> dict:
+    """
+    Cast spell. Port từ spell_resolve.c.
+    Hỗ trợ AoE: nếu spell.aoe, loop tất cả actors trong radius.
+    Return dict result cho LLM narrate.
+    """
+    s = SPELLS.get(spell_id)
+    if not s:
+        return {"ok": False, "error": f"spell '{spell_id}' không tồn tại"}
+
+    results = []  # cho AoE (nhiều target)
+
+    def apply_single(tgt):
+        """Apply spell lên 1 target. Return result dict."""
+        if s.kind == "atk_ranged":
+            # Roll vs AC (giống SP_ATK_RANGED trong C)
+            nat = d20(rng)
+            total = nat + 5  # mod_spell hardcoded 5 (giống C)
+            if nat == 20:  # crit
+                dmg = roll_dice(s.damage, rng) * 2
+                tgt.hp -= dmg
+                if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+                return {"target": tgt.name, "hit": True, "crit": True, "damage": dmg,
+                        "hp_after": tgt.hp, "desc": "CRIT"}
+            elif total >= tgt.ac:
+                dmg = roll_dice(s.damage, rng)
+                tgt.hp -= dmg
+                if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+                return {"target": tgt.name, "hit": True, "crit": False, "damage": dmg,
+                        "hp_after": tgt.hp, "desc": "hit"}
+            else:
+                return {"target": tgt.name, "hit": False, "damage": 0,
+                        "hp_after": tgt.hp, "desc": f"miss (AC {tgt.ac})"}
+
+        elif s.kind == "magic_missile":
+            # Auto-hit, no save
+            dmg = roll_dice(s.damage, rng)
+            tgt.hp -= dmg
+            if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+            return {"target": tgt.name, "hit": True, "damage": dmg,
+                    "hp_after": tgt.hp, "desc": "auto-hit"}
+
+        elif s.kind == "save_half":
+            # Save for half (or full if fail)
+            dmg = roll_dice(s.damage, rng)
+            if s.save:
+                score = getattr(tgt, s.save + "_score", 10)
+                mod = (score - 10) // 2
+                save_roll = d20(rng) + mod
+                if save_roll >= dc:
+                    dmg = dmg // 2  # half
+                    desc = f"save ({s.save} {save_roll}≥{dc}), half"
+                else:
+                    desc = f"fail ({s.save} {save_roll}<{dc}), full"
+            else:
+                desc = "no save"
+            tgt.hp -= dmg
+            if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+            return {"target": tgt.name, "hit": True, "damage": dmg,
+                    "hp_after": tgt.hp, "desc": desc}
+
+        elif s.kind == "buff_ac":
+            # Buff caster (giống C: Effect ac_bonus)
+            caster.ac += s.ac_bonus
+            return {"target": caster.name, "hit": True, "damage": 0,
+                    "ac_bonus": s.ac_bonus, "desc": f"+{s.ac_bonus} AC"}
+
+        elif s.kind == "heal":
+            heal = roll_dice(s.damage, rng)
+            tgt.hp = min(tgt.hp + heal, tgt.max_hp)
+            return {"target": tgt.name, "hit": True, "heal": heal,
+                    "hp_after": tgt.hp, "desc": f"+{heal} HP"}
+
+        elif s.kind == "poison":
+            # Save CON hoặc poison
+            dmg = roll_dice(s.damage, rng)
+            if s.save:
+                score = getattr(tgt, s.save + "_score", 10)
+                mod = (score - 10) // 2
+                save_roll = d20(rng) + mod
+                if save_roll >= dc:
+                    return {"target": tgt.name, "hit": False, "damage": 0,
+                            "desc": f"save ({s.save}), no poison"}
+            tgt.hp -= dmg
+            if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+            # Thêm condition poison (simplified - giảm HP mỗi turn)
+            if "poisoned" not in tgt.conditions:
+                tgt.conditions.append("poisoned")
+            return {"target": tgt.name, "hit": True, "damage": dmg,
+                    "hp_after": tgt.hp, "desc": "POISONED + DOT"}
+
+        elif s.kind == "stun":
+            # Save WIS hoặc stunned
+            if s.save:
+                score = getattr(tgt, s.save + "_score", 10)
+                mod = (score - 10) // 2
+                save_roll = d20(rng) + mod
+                if save_roll >= dc:
+                    return {"target": tgt.name, "hit": False, "damage": 0,
+                            "desc": f"save ({s.save}), không stunned"}
+            if "stunned" not in tgt.conditions:
+                tgt.conditions.append("stunned")
+            return {"target": tgt.name, "hit": True, "damage": 0,
+                    "desc": "STUNNED (mất turn)"}
+
+        return {"target": tgt.name, "hit": False, "desc": "unknown kind"}
+
+    # Execute: single hoặc AoE
+    if s.aoe:
+        # AoE: tìm tất cả target trong radius từ target center
+        targets_hit = []
+        for a in all_actors:
+            if not a.alive or a.team == caster.team:
+                continue
+            if distance_ft(target, a) <= s.aoe_ft:
+                r = apply_single(a)
+                targets_hit.append(r)
+        return {"ok": True, "spell": s.name, "aoe": True, "aoe_ft": s.aoe_ft,
+                "results": targets_hit}
+    else:
+        r = apply_single(target)
+        return {"ok": True, "spell": s.name, "aoe": False, "result": r}
+
+
+# =============================================================================
+# MOVEMENT + OPPORTUNITY ATTACK - mới (C chưa có)
+# =============================================================================
+
+def resolve_move(actor: Actor, dx: int, dy: int, all_actors: list,
+                 rng: random.Random) -> dict:
+    """
+    Di chuyển 1 cell. Return dict result.
+    Nếu rời khỏi threatened square → trigger opportunity attack từ enemy adjacent.
+    """
+    if dx == 0 and dy == 0:
+        return {"ok": False, "reason": "không di chuyển"}
+
+    old_pos = actor.pos
+    new_pos = (actor.pos[0] + dx, actor.pos[1] + dy)
+
+    # Check collision (có actor khác ở new_pos không)
+    for a in all_actors:
+        if a is not actor and a.alive and a.pos == new_pos:
+            return {"ok": False, "reason": f"blocked by {a.name}"}
+
+    # Check opportunity attack: ai đang threaten vị trí cũ?
+    opp_attackers = []
+    for a in all_actors:
+        if a is actor or not a.alive or a.team == actor.team:
+            continue
+        if threatens(a, actor) and not getattr(a, "reaction_used", False):
+            opp_attackers.append(a)
+
+    # Di chuyển
+    actor.pos = new_pos
+
+    # Trigger opportunity attacks
+    opp_results = []
+    for attacker in opp_attackers:
+        r = resolve_attack(attacker, actor, rng)
+        attacker.reaction_used = True  # dùng reaction
+        opp_results.append({"attacker": attacker.name, "result": r})
+
+    return {
+        "ok": True,
+        "from": old_pos,
+        "to": new_pos,
+        "opportunity_attacks": opp_results,
+    }
+
+def step_toward(actor: Actor, target: Actor, all_actors: list,
+                rng: random.Random) -> dict:
+    """
+    Move 1 cell về phía target (giống ai_melee_chaser trong C).
+    Tự chọn dx/dy tối ưu. Return resolve_move result.
+    """
+    dx = target.pos[0] - actor.pos[0]
+    dy = target.pos[1] - actor.pos[1]
+    # Chọn axis lớn hơn trước (giống C ai.c)
+    step_x = 1 if dx > 0 else (-1 if dx < 0 else 0)
+    step_y = 1 if dy > 0 else (-1 if dy < 0 else 0)
+    if abs(dx) >= abs(dy):
+        return resolve_move(actor, step_x, 0, all_actors, rng)
+    else:
+        return resolve_move(actor, 0, step_y, all_actors, rng)
