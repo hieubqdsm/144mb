@@ -145,21 +145,20 @@ class MockDecisionMaker:
         return {"take": True, "give_to": give_to}
 
     def decide_town_choice(self, choices: list) -> dict:
-        """Heuristic: chọn talk Barthen lần đầu, leave_town lần sau (tránh infinite loop)."""
-        if not hasattr(self, "_town_visited"):
-            self._town_visited = False
-        if not self._town_visited:
-            self._town_visited = True
-            # Lần đầu: chọn talk NPC đầu tiên (Barthen)
-            return {"chosen": choices[0]["id"]}
-        # Lần sau: rời town
-        leave = next((c["id"] for c in choices if c["id"] == "leave_town"), choices[-1]["id"])
-        return {"chosen": leave}
+        """Mock heuristic: dùng _TownGuard class-level (persist) tránh infinite loop.
+        _current_node_id được set bởi handle_town trước khi gọi."""
+        node_id = getattr(self, "_current_node_id", "phandalin_arrival")
+        return _TownGuard.decide(node_id, choices)
 
 
 class _TownGuard:
-    """Shared stateful guard chống infinite loop town (dùng cho cả mock + LLM)."""
+    """Shared stateful guard chống infinite loop town (dùng cho cả mock + LLM).
+    Đếm visits per node_id. Visit 1 = talk NPC, visit 2+ = leave_town."""
     _visits = {}   # node_id -> count
+
+    @classmethod
+    def reset(cls):
+        cls._visits = {}
 
     @classmethod
     def decide(cls, node_id, choices):
@@ -264,8 +263,9 @@ class LLMDecisionMaker:
 
     def decide_town_choice(self, choices: list) -> dict:
         """LLM chọn town action. Fallback _TownGuard nếu LLM fail (chống infinite loop)."""
+        node_id = getattr(self, "_current_node_id", "phandalin_arrival")
         if not self.llm or not self.llm.is_available():
-            return _TownGuard.decide("town", choices)
+            return _TownGuard.decide(node_id, choices)
         try:
             from llm_client import TOOL_TOWN_CHOICE
             options_text = "\n".join(f"- {c['id']}: {c['label']}" for c in choices)
@@ -287,11 +287,10 @@ class LLMDecisionMaker:
                     valid_ids = [c["id"] for c in choices]
                     if parsed["chosen"] in valid_ids:
                         return parsed
-            # LLM fail hoặc chọn sai → fallback guard
             print("    ⚠️ LLM town choice fail. Fallback guard.")
         except Exception:
             pass
-        return _TownGuard.decide("town", choices)
+        return _TownGuard.decide(node_id, choices)
 
 
 # =============================================================================
@@ -575,8 +574,10 @@ def handle_town(node: SceneNode, party, rng, deciders):
     for i, c in enumerate(node.choices):
         print(f"    {i+1}. {c['label']}")
     pause()
-    # AI chọn (demo: decider đầu tiên chọn)
+    # AI chọn (decider đầu tiên). Pass node.node_id cho guard để đếm visits đúng.
     d = deciders[party[0].name]
+    # Set _current_node_id để LLMDecisionMaker guard biết node nào đang visit
+    d._current_node_id = node.node_id
     decision = d.decide_town_choice(node.choices)
     chosen = decision["chosen"]
     chosen_label = next(c["label"] for c in node.choices if c["id"] == chosen)
@@ -609,6 +610,7 @@ def run_flow(start_node_id: str = "neverwinter_inn", seed: int = 42,
     sep(f"LMoP FLOW SIMULATOR — seed={seed} — mode={'LLM' if use_llm else 'MOCK'}")
     rng = random.Random(seed)
     party = make_party()
+    _TownGuard.reset()   # reset visit counter cho flow mới
 
     # Phase 1: mock deciders. Phase 2: LLM deciders (fallback mock nếu fail).
     if use_llm:
