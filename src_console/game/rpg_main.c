@@ -4,7 +4,7 @@
    Flow: Title -> Class select -> Dungeon (move, fight, loot) -> descend.
    Controls:
      WASD/arrows = move    SPACE = attack adjacent    I = inventory
-     1 = cast Fire Bolt   2 = cast Magic Missile     H = use potion
+     1 = cast Fire Bolt   2 = cast Magic Missile   3 = Burning Hands (AoE)
      > (on stairs) = descend    R = restart    ESC = menu/quit
    ===================================================================== */
 #define SCREEN_W 100
@@ -33,6 +33,7 @@
 #include "save.h"
 #include "i18n.h"
 #include "dialogue.h"
+#include "distance.h"
 /* data tables compiled rieng (declarations trong headers) */
 #include "../data/monsters.h"
 #include "../game/items.h"
@@ -263,10 +264,16 @@ static void player_act_after(void){
         }
     }
     fov_compute(g_floor.map, g_player_x, g_player_y, 8);
-    /* Resolve conditions dau turn player */
+    /* Resolve conditions dau turn: PLAYER + tất cả MONSTER còn sống */
     char cbuf[80];
     cond_resolve_turn(get_player(), &g_r, cbuf, sizeof(cbuf));
     if(cbuf[0]) log_add(cbuf);
+    /* Monster conditions cũng tick (poison DOT, stun save-ends) */
+    for(int i=1;i<g_n_actors;i++){
+        if(actor_is_dead(&g_all[i])) continue;
+        cond_resolve_turn(&g_all[i], &g_r, cbuf, sizeof(cbuf));
+        if(cbuf[0]) log_add(cbuf);
+    }
     /* Check death */
     if(actor_is_dead(get_player())){
         log_add("*** BAN DA CHET. Press R de restart. ***");
@@ -309,6 +316,31 @@ static void try_move(int dx, int dy){
         return;
     }
     if(map_walkable(g_floor.map, nx, ny)){
+        /* Opportunity attack: check enemy adjacent ở vị trí CŨ trước khi move.
+           Nếu enemy threaten player và có reaction → attack + consume reaction. */
+        Actor *player = get_player();
+        for(int i=1;i<g_n_actors;i++){
+            if(actor_is_dead(&g_all[i])) continue;
+            if(g_all[i].team == player->team) continue;
+            if(actor_can_act(&g_all[i], ECON_REACTION) && dist_threatens(&g_all[i], player)){
+                /* Enemy threaten player → opp attack khi player rời */
+                actor_consume(&g_all[i], ECON_REACTION);
+                const MonsterAction *atk = &g_all[i].type->actions[0];
+                int mod = actor_ability_mod(g_all[i].type->scores[AB_STR]) + atk->atk_bonus;
+                int target_ac = actor_effective_ac(player, cond_ac_bonus(player));
+                AtkResult r = combat_resolve_attack(atk, mod, target_ac, ROLL_NORMAL, &g_r);
+                char buf[80];
+                if(r.hit){
+                    combat_apply_damage(player, r.damage);
+                    sprintf(buf, "OPP ATK! %s danh %s %d damage!", g_all[i].type->name, player->type->name, r.damage);
+                    sfx_hit();
+                } else {
+                    sprintf(buf, "OPP ATK! %s hut.", g_all[i].type->name);
+                    sfx_miss();
+                }
+                log_add(buf);
+            }
+        }
         g_player_x = nx; g_player_y = ny;
         sync_player_pos();
         /* Pickup items */
@@ -385,6 +417,7 @@ static void draw_sidebar(int ox){
     ce_text(ox+2, y++, T(S_CTRL_MOVE), 7);
     ce_text(ox+2, y++, T(S_CTRL_SPELL1), 12);
     ce_text(ox+2, y++, T(S_CTRL_SPELL2), 11);
+    ce_text(ox+2, y++, "3: Bỏng tay (AoE)", 12);
     ce_text(ox+2, y++, T(S_CTRL_POTION), 10);
     ce_text(ox+2, y++, T(S_CTRL_INV), 14);
     ce_text(ox+2, y++, T(S_CTRL_STAIRS), 11);
@@ -634,6 +667,25 @@ void update(float dt){
                 char buf[80];
                 if(t) spell_cast(SPELL_MAGIC_MISSILE, get_player(), t, 5, &g_r, buf, sizeof(buf));
                 else strcpy(buf, "Khong co target.");
+                log_add(buf);
+                player_act_after();
+            }
+            if(ce_keyPressed('3')){
+                /* Burning Hands - AoE, target = nearest monster trong FOV */
+                Actor *t=NULL; int bd=999;
+                for(int i=1;i<g_n_actors;i++){
+                    if(actor_is_dead(&g_all[i])) continue;
+                    if(!map_visible(g_floor.map, g_all[i].x, g_all[i].y)) continue;
+                    int d=abs(g_all[i].x-g_player_x)+abs(g_all[i].y-g_player_y);
+                    if(d<bd){bd=d; t=&g_all[i];}
+                }
+                char buf[256];
+                if(t){
+                    spell_cast_aoe(SPELL_BURNING_HANDS, get_player(), t,
+                                   g_all, g_n_actors, 5, &g_r, buf, sizeof(buf));
+                    sfx_spell();
+                }
+                else strcpy(buf, "Khong co target de AoE.");
                 log_add(buf);
                 player_act_after();
             }

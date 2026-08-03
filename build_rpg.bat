@@ -26,6 +26,7 @@ cl /nologo /MT /O2 /utf-8 /Fe:%OUTDIR%\rpg.exe ^
    src_console\game\ai.c ^
    src_console\game\spell_resolve.c ^
    src_console\game\dungeon.c ^
+   src_console\game\distance.c ^
    src_console\game\save.c ^
    src_console\game\dialogue.c ^
    src_console\game\ui.c ^

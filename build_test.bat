@@ -22,6 +22,7 @@ cl /nologo /MT /O2 /utf-8 /Fe:%OUTDIR%\test_logic.exe ^
    src_console\game\inventory.c ^
    src_console\game\ai.c ^
    src_console\game\spell_resolve.c ^
+   src_console\game\distance.c ^
    src_console\game\save.c ^
    src_console\data\monsters.c ^
    src_console\data\items.c ^

@@ -31,6 +31,7 @@ typedef struct {
     uint8_t ac_bonus;           /* for buff spells */
     uint16_t glyph;
     int glyph_color;
+    uint8_t aoe_ft;             /* >0 = AoE radius feet (hit tất cả target trong radius) */
 } SpellDef;
 
 extern const SpellDef SPELLS[];
@@ -42,5 +43,7 @@ extern const int N_SPELLS;
 #define SPELL_CURE_WOUNDS  4
 #define SPELL_POISON_SPRAY 5
 #define SPELL_HOLD_PERSON  6
+#define SPELL_BURNING_HANDS 7  /* MỚI: AoE cone lửa */
+#define N_SPELLS_EXT       8
 
 #endif /* CE_SPELLS_H */

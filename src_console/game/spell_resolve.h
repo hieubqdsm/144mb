@@ -15,4 +15,11 @@
 int spell_cast(int spell_id, Actor *caster, Actor *target,
                int mod_spell, RNG *rng, char *log_buf, int log_size);
 
+/* Cast AoE spell: hit tất cả actor trong radius từ target center.
+   Dùng cho Burning Hands / Fireball. Loop all_actors, filter dist_feet <= aoe_ft.
+   log_buf nhận summary. Trả về số target bị hit. */
+int spell_cast_aoe(int spell_id, Actor *caster, Actor *target,
+                   Actor *all_actors, int n_actors,
+                   int mod_spell, RNG *rng, char *log_buf, int log_size);
+
 #endif /* CE_SPELL_RESOLVE_H */

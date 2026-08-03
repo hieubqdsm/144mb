@@ -139,3 +139,42 @@ int spell_cast(int spell_id, Actor *caster, Actor *target,
     }
     return 1;
 }
+
+/* AoE spell: hit tất cả actor trong radius từ target center. */
+int spell_cast_aoe(int spell_id, Actor *caster, Actor *target,
+                   Actor *all_actors, int n_actors,
+                   int mod_spell, RNG *rng, char *log_buf, int log_size){
+    if(spell_id < 0 || spell_id >= N_SPELLS){ return 0; }
+    const SpellDef *s = &SPELLS[spell_id];
+    if(s->aoe_ft == 0){
+        /* Không phải AoE → fallback single target */
+        return spell_cast(spell_id, caster, target, mod_spell, rng, log_buf, log_size);
+    }
+    int hit_count = 0;
+    char buf[256];
+    snprintf(log_buf, log_size, "%s cast %s (AoE %dft):", caster->type->name, s->name, s->aoe_ft);
+    for(int i = 0; i < n_actors; i++){
+        Actor *t = &all_actors[i];
+        if(t == caster) continue;
+        if(actor_is_dead(t)) continue;
+        if(t->team == caster->team) continue;
+        /* Trong radius? */
+        int dx = t->x - target->x; if(dx < 0) dx = -dx;
+        int dy = t->y - target->y; if(dy < 0) dy = -dy;
+        int cheb = dx > dy ? dx : dy;
+        if(cheb * 5 <= s->aoe_ft){
+            char single[128];
+            spell_cast(spell_id, caster, t, mod_spell, rng, single, sizeof(single));
+            snprintf(buf, sizeof(buf), " %s;", single);
+            if((int)strlen(log_buf) + (int)strlen(buf) < log_size - 1){
+                strcat(log_buf, buf);
+            }
+            hit_count++;
+        }
+    }
+    if(hit_count == 0){
+        snprintf(log_buf, log_size, "%s cast %s: khong co target trong AoE.",
+                 caster->type->name, s->name);
+    }
+    return hit_count;
+}

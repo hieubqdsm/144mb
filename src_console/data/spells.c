@@ -103,5 +103,19 @@ const SpellDef SPELLS[] = {
         .glyph       = '*',
         .glyph_color = CE_CYAN,
     },
+
+    /* [SPELL_BURNING_HANDS] - lv1, AoE cone lửa 15ft, save DEX half */
+    [SPELL_BURNING_HANDS] = {
+        .name        = "Burning Hands",
+        .level       = 1,
+        .kind        = SP_SAVE_HALF,
+        .damage      = DICE(3, 6, 0),
+        .dmg_type    = DMG_FIRE,
+        .save        = SAVE_DEX,
+        .ac_bonus    = 0,
+        .glyph       = '~',
+        .glyph_color = CE_RED,
+        .aoe_ft      = 15,           /* AoE cone 15ft */
+    },
 };
 const int N_SPELLS = (int)(sizeof(SPELLS)/sizeof(SPELLS[0]));
