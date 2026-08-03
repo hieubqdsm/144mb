@@ -145,10 +145,25 @@ class MockDecisionMaker:
         return {"take": True, "give_to": give_to}
 
     def decide_town_choice(self, choices: list) -> dict:
-        """Mock heuristic: dùng _TownGuard class-level (persist) tránh infinite loop.
-        _current_node_id được set bởi handle_town trước khi gọi."""
-        node_id = getattr(self, "_current_node_id", "phandalin_arrival")
-        return _TownGuard.decide(node_id, choices)
+        """Mock heuristic: chọn theo personality. handle_town tự loop, không cần guard.
+        Visit 1-2: gặp NPC. Visit 3+: leave (tránh mock loop quá lâu)."""
+        visit = getattr(self, "_town_visit_count", 0) + 1
+        self._town_visit_count = visit
+        if visit >= 4:  # mock safety
+            leave = next((c["id"] for c in choices if c["id"] == "leave_town"), choices[-1]["id"])
+            return {"chosen": leave}
+        # Theo personality
+        prefs = {
+            "Thorin": ["talk_barthen", "rest_inn", "leave_town"],
+            "Elara": ["talk_garaele", "talk_barthen", "leave_town"],
+            "Lyra": ["talk_halia", "rest_inn", "leave_town"],
+            "Bjorn": ["rest_inn", "talk_garaele", "leave_town"],
+        }
+        pref_list = prefs.get(self.name, prefs["Thorin"])
+        idx = min(visit - 1, len(pref_list) - 1)
+        wanted = pref_list[idx]
+        valid = next((c["id"] for c in choices if c["id"] == wanted), None)
+        return {"chosen": valid or choices[0]["id"]}
 
 
 class _TownGuard:
@@ -262,17 +277,9 @@ class LLMDecisionMaker:
         return MockDecisionMaker(self.name).decide_loot(item, party)
 
     def decide_town_choice(self, choices: list) -> dict:
-        """LLM chọn town action. Guard luôn chạy để đếm visit + force leave nếu cần."""
-        node_id = getattr(self, "_current_node_id", "phandalin_arrival")
-        # Luôn gọi guard trước để đếm visit + kiểm tra force-leave
-        guard_decision = _TownGuard.decide(node_id, choices)
-        # Nếu guard nói leave (visit >= 2) → ép leave, không cần hỏi LLM
-        leave_id = next((c["id"] for c in choices if c["id"] == "leave_town"), None)
-        if guard_decision["chosen"] == leave_id:
-            return guard_decision
-        # Visit đầu: hỏi LLM (cho phép chọn NPC nào), nhưng vẫn chốt guard đã count
+        """LLM chọn town action. Town tự loop trong handle_town nên không cần guard."""
         if not self.llm or not self.llm.is_available():
-            return guard_decision
+            return MockDecisionMaker(self.name).decide_town_choice(choices)
         try:
             from llm_client import TOOL_TOWN_CHOICE
             options_text = "\n".join(f"- {c['id']}: {c['label']}" for c in choices)
@@ -293,13 +300,11 @@ class LLMDecisionMaker:
                 if parsed and parsed.get("chosen"):
                     valid_ids = [c["id"] for c in choices]
                     if parsed["chosen"] in valid_ids:
-                        # Không cho chọn leave_town ở visit đầu (cho LLM chơi 1 NPC)
-                        if parsed["chosen"] != leave_id:
-                            return parsed
-            print("    ⚠️ LLM town choice fail. Fallback guard.")
+                        return parsed
+            print("    ⚠️ LLM town choice fail. Fallback mock.")
         except Exception:
             pass
-        return guard_decision
+        return MockDecisionMaker(self.name).decide_town_choice(choices)
 
 
 # =============================================================================
@@ -577,20 +582,58 @@ def handle_loot(node: SceneNode, party, rng, deciders):
     return {"loot": loot, "next": node.next}
 
 def handle_town(node: SceneNode, party, rng, deciders):
+    """Town hub = 1 node, lặp bên trong cho party gặp nhiều NPC.
+    Chỉ thoát khi party chọn 'leave_town' (hoặc max 10 actions safety)."""
     dm_say(node.narration)
     pause()
-    print("\n  Lựa chọn:")
-    for i, c in enumerate(node.choices):
-        print(f"    {i+1}. {c['label']}")
-    pause()
-    # AI chọn (decider đầu tiên). Pass node.node_id cho guard để đếm visits đúng.
     d = deciders[party[0].name]
-    # Set _current_node_id để LLMDecisionMaker guard biết node nào đang visit
     d._current_node_id = node.node_id
-    decision = d.decide_town_choice(node.choices)
-    chosen = decision["chosen"]
-    chosen_label = next(c["label"] for c in node.choices if c["id"] == chosen)
-    player_say(party[0].name, f"Tôi chọn: {chosen_label}")
+
+    max_actions = 10  # safety net
+    for action_n in range(max_actions):
+        print(f"\n  ── Ở thị trấn (lần {action_n+1}) ──")
+        print("  Lựa chọn:")
+        for i, c in enumerate(node.choices):
+            print(f"    {i+1}. {c['label']}")
+        pause()
+
+        decision = d.decide_town_choice(node.choices)
+        chosen = decision["chosen"]
+        chosen_label = next(c["label"] for c in node.choices if c["id"] == chosen)
+        player_say(party[0].name, f"Tôi chọn: {chosen_label}")
+        pause()
+
+        # Xử lý choice
+        if chosen == "leave_town":
+            dm_say("Team rời Phandalin, tiếp tục hành trình...")
+            pause()
+            return {"chosen": chosen, "next": next_after_action(node, {"chosen": chosen})}
+        elif chosen == "rest_inn":
+            # Long rest: full heal
+            for a in party:
+                a.hp = a.max_hp
+                a.conditions = []
+            engine_log("Long rest: full heal toàn party!")
+            for a in party:
+                print(f"    {a.name}: HP {a.hp}/{a.max_hp}")
+            pause()
+        elif chosen.startswith("talk_"):
+            # Gặp NPC → hiện dialogue ngắn
+            npc_map = {
+                "talk_barthen": ("Elmar Barthen", "Chào các anh! 10 vàng tiền hộ tống. Gundren bị bắt? Thảm hại... Hai anh nó là Nundro và Tharden ngoài thị trấn."),
+                "talk_halia": ("Halia Thornton", "100 vàng nếu giết tên Redbrand Glasstaff. Mang thư từ phòng hắn về đây. Đừng tin Harbin."),
+                "talk_garaele": ("Sister Garaele", "Mang chiếc lược bạc cho banshee Agatha ở Conyberry. Hỏi về sách phép Bowgentle. Phần thưởng: 3 lọ thuốc."),
+            }
+            npc_name, npc_text = npc_map.get(chosen, ("NPC", "..."))
+            dm_say(f"{npc_name}: {npc_text}")
+            pause()
+        else:
+            engine_log(f"Action '{chosen}' chưa implement, bỏ qua.")
+            pause()
+
+    # Safety: max actions reached
+    dm_say("Trời tối, team quyết định rời thị trấn...")
+    return {"chosen": "leave_town", "next": next_after_action(node, {"chosen": "leave_town"})}
     pause()
     return {"chosen": chosen, "next": next_after_action(node, {"chosen": chosen})}
 
