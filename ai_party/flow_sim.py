@@ -262,10 +262,17 @@ class LLMDecisionMaker:
         return MockDecisionMaker(self.name).decide_loot(item, party)
 
     def decide_town_choice(self, choices: list) -> dict:
-        """LLM chọn town action. Fallback _TownGuard nếu LLM fail (chống infinite loop)."""
+        """LLM chọn town action. Guard luôn chạy để đếm visit + force leave nếu cần."""
         node_id = getattr(self, "_current_node_id", "phandalin_arrival")
+        # Luôn gọi guard trước để đếm visit + kiểm tra force-leave
+        guard_decision = _TownGuard.decide(node_id, choices)
+        # Nếu guard nói leave (visit >= 2) → ép leave, không cần hỏi LLM
+        leave_id = next((c["id"] for c in choices if c["id"] == "leave_town"), None)
+        if guard_decision["chosen"] == leave_id:
+            return guard_decision
+        # Visit đầu: hỏi LLM (cho phép chọn NPC nào), nhưng vẫn chốt guard đã count
         if not self.llm or not self.llm.is_available():
-            return _TownGuard.decide(node_id, choices)
+            return guard_decision
         try:
             from llm_client import TOOL_TOWN_CHOICE
             options_text = "\n".join(f"- {c['id']}: {c['label']}" for c in choices)
@@ -286,11 +293,13 @@ class LLMDecisionMaker:
                 if parsed and parsed.get("chosen"):
                     valid_ids = [c["id"] for c in choices]
                     if parsed["chosen"] in valid_ids:
-                        return parsed
+                        # Không cho chọn leave_town ở visit đầu (cho LLM chơi 1 NPC)
+                        if parsed["chosen"] != leave_id:
+                            return parsed
             print("    ⚠️ LLM town choice fail. Fallback guard.")
         except Exception:
             pass
-        return _TownGuard.decide(node_id, choices)
+        return guard_decision
 
 
 # =============================================================================
