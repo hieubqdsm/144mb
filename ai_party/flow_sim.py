@@ -600,16 +600,28 @@ def handle_town(node: SceneNode, party, rng, deciders):
         d._current_node_id = node.node_id
         d._town_visit_count = action_n  # sync count
 
+        # Lọc choices: bỏ NPC đã gặp (chỉ giữ rest + leave + NPC chưa gặp)
+        available_choices = []
+        for c in node.choices:
+            if c["id"].startswith("talk_") and c["id"] in visited_npcs:
+                continue   # đã gặp → bỏ
+            available_choices.append(c)
+        # Nếu chỉ còn rest + leave → tự động leave (hết NPC mới)
+        talk_remaining = [c for c in available_choices if c["id"].startswith("talk_")]
+        if not talk_remaining and action_n > 0:
+            dm_say("Team đã gặp hết NPC quan trọng. Quyết định rời thị trấn...")
+            pause()
+            return {"chosen": "leave_town", "next": next_after_action(node, {"chosen": "leave_town"})}
+
         print(f"\n  ── Ở thị trấn (lần {action_n+1}, {decider_name} quyết định) ──")
         print("  Lựa chọn:")
-        for i, c in enumerate(node.choices):
-            done = "✓" if c["id"] in visited_npcs and c["id"].startswith("talk_") else " "
-            print(f"    {done} {i+1}. {c['label']}")
+        for i, c in enumerate(available_choices):
+            print(f"    {i+1}. {c['label']}")
         pause()
 
-        decision = d.decide_town_choice(node.choices)
+        decision = d.decide_town_choice(available_choices)
         chosen = decision["chosen"]
-        chosen_label = next(c["label"] for c in node.choices if c["id"] == chosen)
+        chosen_label = next((c["label"] for c in available_choices if c["id"] == chosen), "?")
         player_say(decider_name, f"Tôi chọn: {chosen_label}")
         pause()
 
