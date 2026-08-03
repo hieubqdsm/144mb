@@ -111,6 +111,21 @@ class MockDecisionMaker:
         return {"chosen": leave}
 
 
+class _TownGuard:
+    """Shared stateful guard chống infinite loop town (dùng cho cả mock + LLM)."""
+    _visits = {}   # node_id -> count
+
+    @classmethod
+    def decide(cls, node_id, choices):
+        n = cls._visits.get(node_id, 0) + 1
+        cls._visits[node_id] = n
+        # Lần đầu: talk NPC đầu. Lần sau: leave.
+        if n <= 1:
+            return {"chosen": choices[0]["id"]}
+        leave = next((c["id"] for c in choices if c["id"] == "leave_town"), choices[-1]["id"])
+        return {"chosen": leave}
+
+
 # =============================================================================
 # LLM DECISION MAKER (Phase 2 — LLM thật, cần API key)
 # =============================================================================
@@ -141,62 +156,80 @@ class LLMDecisionMaker:
 
     def decide_combat(self, state, actor) -> dict:
         if not self.llm or not self.llm.is_available():
-            # Fallback heuristic
             return MockDecisionMaker(self.name).decide_combat(state, actor)
-        snap = state.snapshot()
-        foes = [a for a in snap["actors"] if a["team"] == "monsters" and a["alive"]]
-        user_msg = (f"Lượt của bạn. HP bạn: {actor.hp}/{actor.max_hp}. "
-                    f"Kẻ địch còn sống: {[(f['name'], f['hp']) for f in foes]}. "
-                    f"Chọn action (attack target / cast spell / say).")
-        from llm_client import TOOL_COMBAT_ACTION
-        resp = self.llm.chat(self._build_system(),
-                             [{"role": "user", "content": user_msg}],
-                             tools=[TOOL_COMBAT_ACTION],
-                             tool_choice={"type": "function", "function": {"name": "choose_action"}})
-        # Parse tool_call
-        for tc in resp.get("tool_calls", []):
-            args = tc.get("function", {}).get("arguments", "{}")
-            from protocol import parse_llm_json
-            parsed = parse_llm_json(args) or {}
-            if parsed.get("verb"):
-                return parsed
-        # Fallback
+        try:
+            snap = state.snapshot()
+            foes = [a for a in snap["actors"] if a["team"] == "monsters" and a["alive"]]
+            user_msg = (f"Lượt của bạn. HP bạn: {actor.hp}/{actor.max_hp}. "
+                        f"Kẻ địch còn sống: {[(f['name'], f['hp']) for f in foes]}. "
+                        f"Chọn action (attack target / cast spell / say).")
+            from llm_client import TOOL_COMBAT_ACTION
+            resp = self.llm.chat(self._build_system(),
+                                 [{"role": "user", "content": user_msg}],
+                                 tools=[TOOL_COMBAT_ACTION],
+                                 tool_choice={"type": "function", "function": {"name": "choose_action"}})
+            if resp.get("error"):
+                print(f"    ⚠️ LLM error: {resp['error'][:80]}. Fallback heuristic.")
+                return MockDecisionMaker(self.name).decide_combat(state, actor)
+            for tc in resp.get("tool_calls", []):
+                args = tc.get("function", {}).get("arguments", "{}")
+                from protocol import parse_llm_json
+                parsed = parse_llm_json(args) or {}
+                if parsed.get("verb"):
+                    return parsed
+        except Exception as e:
+            print(f"    ⚠️ LLM exception: {str(e)[:80]}. Fallback heuristic.")
         return MockDecisionMaker(self.name).decide_combat(state, actor)
 
     def decide_loot(self, item, party) -> dict:
         if not self.llm or not self.llm.is_available():
             return MockDecisionMaker(self.name).decide_loot(item, party)
-        from llm_client import TOOL_LOOT_DECISION
-        party_names = [a.name for a in party]
-        user_msg = (f"Loot được: {item['name']}. Party: {party_names}. "
-                    f"Bạn (đại diện party) chọn take/leave + give_to ai.")
-        resp = self.llm.chat(self._build_system(),
-                             [{"role": "user", "content": user_msg}],
-                             tools=[TOOL_LOOT_DECISION])
-        for tc in resp.get("tool_calls", []):
-            args = tc.get("function", {}).get("arguments", "{}")
-            from protocol import parse_llm_json
-            parsed = parse_llm_json(args) or {}
-            if "take" in parsed:
-                return parsed
+        try:
+            from llm_client import TOOL_LOOT_DECISION
+            party_names = [a.name for a in party]
+            user_msg = (f"Loot được: {item['name']}. Party: {party_names}. "
+                        f"Bạn (đại diện party) chọn take/leave + give_to ai.")
+            resp = self.llm.chat(self._build_system(),
+                                 [{"role": "user", "content": user_msg}],
+                                 tools=[TOOL_LOOT_DECISION])
+            if resp.get("error"):
+                return MockDecisionMaker(self.name).decide_loot(item, party)
+            for tc in resp.get("tool_calls", []):
+                args = tc.get("function", {}).get("arguments", "{}")
+                from protocol import parse_llm_json
+                parsed = parse_llm_json(args) or {}
+                if "take" in parsed:
+                    return parsed
+        except Exception:
+            pass
         return MockDecisionMaker(self.name).decide_loot(item, party)
 
     def decide_town_choice(self, choices: list) -> dict:
+        """LLM chọn town action. Fallback _TownGuard nếu LLM fail (chống infinite loop)."""
         if not self.llm or not self.llm.is_available():
-            return MockDecisionMaker(self.name).decide_town_choice(choices)
-        from llm_client import TOOL_TOWN_CHOICE
-        options_text = "\n".join(f"- {c['id']}: {c['label']}" for c in choices)
-        user_msg = f"Đang ở thị trấn. Chọn 1:\n{options_text}"
-        resp = self.llm.chat(self._build_system(),
-                             [{"role": "user", "content": user_msg}],
-                             tools=[TOOL_TOWN_CHOICE])
-        for tc in resp.get("tool_calls", []):
-            args = tc.get("function", {}).get("arguments", "{}")
-            from protocol import parse_llm_json
-            parsed = parse_llm_json(args) or {}
-            if parsed.get("chosen"):
-                return parsed
-        return MockDecisionMaker(self.name).decide_town_choice(choices)
+            return _TownGuard.decide("town", choices)
+        try:
+            from llm_client import TOOL_TOWN_CHOICE
+            options_text = "\n".join(f"- {c['id']}: {c['label']}" for c in choices)
+            user_msg = f"Đang ở thị trấn. Chọn 1:\n{options_text}"
+            resp = self.llm.chat(self._build_system(),
+                                 [{"role": "user", "content": user_msg}],
+                                 tools=[TOOL_TOWN_CHOICE])
+            if not resp.get("error"):
+                for tc in resp.get("tool_calls", []):
+                    args = tc.get("function", {}).get("arguments", "{}")
+                    from protocol import parse_llm_json
+                    parsed = parse_llm_json(args) or {}
+                    if parsed.get("chosen"):
+                        # Validate chosen id hợp lệ
+                        valid_ids = [c["id"] for c in choices]
+                        if parsed["chosen"] in valid_ids:
+                            return parsed
+            # LLM fail hoặc chọn sai → fallback guard
+            print("    ⚠️ LLM town choice fail. Fallback guard.")
+        except Exception:
+            pass
+        return _TownGuard.decide("town", choices)
 
 
 # =============================================================================
@@ -390,7 +423,13 @@ def run_flow(start_node_id: str = "neverwinter_inn", seed: int = 42,
 
     node_id = start_node_id
     party_surprised = []
+    max_visits = 50   # hard limit chống infinite loop
+    visit_count = 0
     while node_id:
+        visit_count += 1
+        if visit_count > max_visits:
+            print(f"\n⚠️ Dừng: vượt {max_visits} node visits (chống infinite loop).")
+            break
         node = get_node(node_id)
         if not node:
             print(f"❌ Node không tồn tại: {node_id}")
