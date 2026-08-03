@@ -145,25 +145,27 @@ class MockDecisionMaker:
         return {"take": True, "give_to": give_to}
 
     def decide_town_choice(self, choices: list) -> dict:
-        """Mock heuristic: chọn theo personality. handle_town tự loop, không cần guard.
-        Visit 1-2: gặp NPC. Visit 3+: leave (tránh mock loop quá lâu)."""
-        visit = getattr(self, "_town_visit_count", 0) + 1
-        self._town_visit_count = visit
-        if visit >= 4:  # mock safety
-            leave = next((c["id"] for c in choices if c["id"] == "leave_town"), choices[-1]["id"])
-            return {"chosen": leave}
-        # Theo personality
+        """Mock heuristic: chọn theo personality + visit count.
+        _town_visit_count được set bởi handle_town (luân phiên party member)."""
+        visit = getattr(self, "_town_visit_count", 0)
+        # Theo personality + vị trí trong luân phiên
         prefs = {
-            "Thorin": ["talk_barthen", "rest_inn", "leave_town"],
-            "Elara": ["talk_garaele", "talk_barthen", "leave_town"],
-            "Lyra": ["talk_halia", "rest_inn", "leave_town"],
-            "Bjorn": ["rest_inn", "talk_garaele", "leave_town"],
+            "Thorin": ["talk_barthen", "rest_inn"],
+            "Elara": ["talk_garaele"],
+            "Lyra": ["talk_halia"],
+            "Bjorn": ["rest_inn"],
         }
-        pref_list = prefs.get(self.name, prefs["Thorin"])
-        idx = min(visit - 1, len(pref_list) - 1)
+        pref_list = prefs.get(self.name, ["talk_barthen"])
+        idx = min(visit // len(prefs), len(pref_list) - 1)
         wanted = pref_list[idx]
         valid = next((c["id"] for c in choices if c["id"] == wanted), None)
-        return {"chosen": valid or choices[0]["id"]}
+        if valid:
+            return {"chosen": valid}
+        # Safety: nếu visit nhiều → leave
+        if visit >= 4:
+            leave = next((c["id"] for c in choices if c["id"] == "leave_town"), choices[-1]["id"])
+            return {"chosen": leave}
+        return {"chosen": choices[0]["id"]}
 
 
 class _TownGuard:
@@ -583,24 +585,32 @@ def handle_loot(node: SceneNode, party, rng, deciders):
 
 def handle_town(node: SceneNode, party, rng, deciders):
     """Town hub = 1 node, lặp bên trong cho party gặp nhiều NPC.
-    Chỉ thoát khi party chọn 'leave_town' (hoặc max 10 actions safety)."""
+    Chỉ thoát khi party chọn 'leave_town' (hoặc max 10 actions safety).
+    Mỗi turn: luân phiên party member quyết định (tránh 1 người quyết hết)."""
     dm_say(node.narration)
     pause()
-    d = deciders[party[0].name]
-    d._current_node_id = node.node_id
 
+    # Track NPCs đã gặp (tránh lặp dialogue cùng NPC)
+    visited_npcs = set()
+    party_idx = 0  # luân phiên party member
     max_actions = 10  # safety net
     for action_n in range(max_actions):
-        print(f"\n  ── Ở thị trấn (lần {action_n+1}) ──")
+        decider_name = party[party_idx % len(party)].name
+        d = deciders[decider_name]
+        d._current_node_id = node.node_id
+        d._town_visit_count = action_n  # sync count
+
+        print(f"\n  ── Ở thị trấn (lần {action_n+1}, {decider_name} quyết định) ──")
         print("  Lựa chọn:")
         for i, c in enumerate(node.choices):
-            print(f"    {i+1}. {c['label']}")
+            done = "✓" if c["id"] in visited_npcs and c["id"].startswith("talk_") else " "
+            print(f"    {done} {i+1}. {c['label']}")
         pause()
 
         decision = d.decide_town_choice(node.choices)
         chosen = decision["chosen"]
         chosen_label = next(c["label"] for c in node.choices if c["id"] == chosen)
-        player_say(party[0].name, f"Tôi chọn: {chosen_label}")
+        player_say(decider_name, f"Tôi chọn: {chosen_label}")
         pause()
 
         # Xử lý choice
@@ -609,7 +619,6 @@ def handle_town(node: SceneNode, party, rng, deciders):
             pause()
             return {"chosen": chosen, "next": next_after_action(node, {"chosen": chosen})}
         elif chosen == "rest_inn":
-            # Long rest: full heal
             for a in party:
                 a.hp = a.max_hp
                 a.conditions = []
@@ -618,11 +627,11 @@ def handle_town(node: SceneNode, party, rng, deciders):
                 print(f"    {a.name}: HP {a.hp}/{a.max_hp}")
             pause()
         elif chosen.startswith("talk_"):
-            # Gặp NPC → hiện dialogue ngắn
+            visited_npcs.add(chosen)
             npc_map = {
-                "talk_barthen": ("Elmar Barthen", "Chào các anh! 10 vàng tiền hộ tống. Gundren bị bắt? Thảm hại... Hai anh nó là Nundro và Tharden ngoài thị trấn."),
-                "talk_halia": ("Halia Thornton", "100 vàng nếu giết tên Redbrand Glasstaff. Mang thư từ phòng hắn về đây. Đừng tin Harbin."),
-                "talk_garaele": ("Sister Garaele", "Mang chiếc lược bạc cho banshee Agatha ở Conyberry. Hỏi về sách phép Bowgentle. Phần thưởng: 3 lọ thuốc."),
+                "talk_barthen": ("Elmar Barthen", "Chào các anh! 10 vàng tiền hộ tống đây. Gundren bị bắt à? Thảm thay... Hai anh nó là Nundro và Tharden, cắm trại ngoài thị trấn mấy hôm rồi không thấy."),
+                "talk_halia": ("Halia Thornton", "Ta sẵn lòng trả 100 vàng cho ai tiêu diệt tên Redbrand Glasstaff. Mang thư từ phòng hắn về đây. (thì thầm) Đừng tin townmaster Harbin, hắn hèn nhát."),
+                "talk_garaele": ("Sister Garaele", "Ta cần người mang chiếc lược bạc đính ngọc cho banshee Agatha ở Conyberry. Hỏi về sách phép Bowgentle. Phần thưởng: 3 lọ thuốc hồi máu."),
             }
             npc_name, npc_text = npc_map.get(chosen, ("NPC", "..."))
             dm_say(f"{npc_name}: {npc_text}")
@@ -630,8 +639,8 @@ def handle_town(node: SceneNode, party, rng, deciders):
         else:
             engine_log(f"Action '{chosen}' chưa implement, bỏ qua.")
             pause()
+        party_idx += 1
 
-    # Safety: max actions reached
     dm_say("Trời tối, team quyết định rời thị trấn...")
     return {"chosen": "leave_town", "next": next_after_action(node, {"chosen": "leave_town"})}
     pause()
@@ -656,9 +665,12 @@ HANDLERS = {
 # MAIN FLOW SIMULATOR
 # =============================================================================
 
-def run_flow(start_node_id: str = "neverwinter_inn", seed: int = 42,
+def run_flow(start_node_id: str = "neverwinter_inn", seed: int = None,
              use_llm: bool = False):
     """Chạy flow graph từ node bắt đầu."""
+    if seed is None:
+        import time as _time
+        seed = int(_time.time()) % 100000
     sep(f"LMoP FLOW SIMULATOR — seed={seed} — mode={'LLM' if use_llm else 'MOCK'}")
     rng = random.Random(seed)
     party = make_party()
@@ -732,7 +744,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LMoP Flow Simulator")
     parser.add_argument("--llm", action="store_true",
                         help="Dùng LLM thật (cần API key). Default: mock heuristic.")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed (default 42)")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed (default=random mỗi run)")
     parser.add_argument("--start", default="neverwinter_inn", help="Node bắt đầu")
     parser.add_argument("--speed", type=float, default=1.5,
                         help="Delay giây giữa turn/scene (default 1.5, 0=không delay)")
