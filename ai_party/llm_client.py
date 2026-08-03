@@ -117,6 +117,10 @@ class LLMClient:
         choice = raw.get("choices", [{}])[0].get("message", {})
         content = choice.get("content", "") or ""
         tool_calls = choice.get("tool_calls", []) or []
+        # DEBUG: log raw response khi có tools (để xem GLM trả gì)
+        if tools and not tool_calls:
+            import sys
+            print(f"    [DEBUG] LLM returned no tool_calls. Raw message: {json.dumps(choice, ensure_ascii=False)[:300]}", file=sys.stderr)
         return {"content": content, "tool_calls": tool_calls, "raw": raw,
                 "error": None}
 

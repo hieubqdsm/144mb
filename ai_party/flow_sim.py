@@ -188,12 +188,19 @@ class LLMDecisionMaker:
             if resp.get("error"):
                 print(f"    ⚠️ LLM error: {resp['error'][:80]}. Fallback heuristic.")
                 return MockDecisionMaker(self.name).decide_combat(state, actor)
+            # Parse tool_call HOẶC content text (nhiều model không hỗ trợ function calling)
+            parsed = None
             for tc in resp.get("tool_calls", []):
                 args = tc.get("function", {}).get("arguments", "{}")
                 from protocol import parse_llm_json
                 parsed = parse_llm_json(args) or {}
                 if parsed.get("verb"):
-                    return parsed
+                    break
+            if not parsed and resp.get("content"):
+                # Thử parse JSON từ content text
+                parsed = parse_llm_json(resp["content"]) or {}
+            if parsed and parsed.get("verb"):
+                return parsed
         except Exception as e:
             print(f"    ⚠️ LLM exception: {str(e)[:80]}. Fallback heuristic.")
         return MockDecisionMaker(self.name).decide_combat(state, actor)
@@ -211,12 +218,17 @@ class LLMDecisionMaker:
                                  tools=[TOOL_LOOT_DECISION])
             if resp.get("error"):
                 return MockDecisionMaker(self.name).decide_loot(item, party)
+            parsed = None
             for tc in resp.get("tool_calls", []):
                 args = tc.get("function", {}).get("arguments", "{}")
                 from protocol import parse_llm_json
                 parsed = parse_llm_json(args) or {}
                 if "take" in parsed:
                     return parsed
+            if not parsed and resp.get("content"):
+                parsed = parse_llm_json(resp["content"]) or {}
+            if parsed and "take" in parsed:
+                return parsed
         except Exception:
             pass
         return MockDecisionMaker(self.name).decide_loot(item, party)
@@ -233,15 +245,19 @@ class LLMDecisionMaker:
                                  [{"role": "user", "content": user_msg}],
                                  tools=[TOOL_TOWN_CHOICE])
             if not resp.get("error"):
+                parsed = None
                 for tc in resp.get("tool_calls", []):
                     args = tc.get("function", {}).get("arguments", "{}")
                     from protocol import parse_llm_json
                     parsed = parse_llm_json(args) or {}
                     if parsed.get("chosen"):
-                        # Validate chosen id hợp lệ
-                        valid_ids = [c["id"] for c in choices]
-                        if parsed["chosen"] in valid_ids:
-                            return parsed
+                        break
+                if not parsed and resp.get("content"):
+                    parsed = parse_llm_json(resp["content"]) or {}
+                if parsed and parsed.get("chosen"):
+                    valid_ids = [c["id"] for c in choices]
+                    if parsed["chosen"] in valid_ids:
+                        return parsed
             # LLM fail hoặc chọn sai → fallback guard
             print("    ⚠️ LLM town choice fail. Fallback guard.")
         except Exception:
