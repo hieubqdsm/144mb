@@ -121,16 +121,25 @@ class DMAgent:
 # =============================================================================
 
 def make_party() -> list:
-    """4 player actors - tương đương party_demo.c. Stats theo D&D 5e standard array."""
+    """4 hero BG3-style: Gale, Astarion, Jennevelle, Karlach.
+    Class/Race đúng D&D 5e (Standard Array: 15,14,13,12,10,8)."""
     return [
-        Actor("Thorin",  "party", hp=30, max_hp=30, ac=16, atk_bonus=5, damage_dice="1d8+3", glyph="@",
-              str_score=16, dex_score=12, con_score=14, int_score=8, wis_score=10, cha_score=10),  # Fighter
-        Actor("Elara",   "party", hp=22, max_hp=22, ac=13, atk_bonus=6, damage_dice="1d10+4", glyph="@",
-              str_score=8, dex_score=14, con_score=12, int_score=16, wis_score=12, cha_score=10),  # Wizard (Fire Bolt)
-        Actor("Lyra",    "party", hp=20, max_hp=20, ac=14, atk_bonus=4, damage_dice="1d6+2", glyph="@",
-              str_score=9, dex_score=16, con_score=14, int_score=12, wis_score=10, cha_score=13),  # Rogue (scout)
-        Actor("Bjorn",   "party", hp=28, max_hp=28, ac=17, atk_bonus=5, damage_dice="1d8+3", glyph="@",
-              str_score=14, dex_score=10, con_score=13, int_score=11, wis_score=16, cha_score=12),  # Cleric (high WIS)
+        # Karlach — Fighter, Tiefling. STR cao, tank.
+        Actor("Karlach", "party", hp=30, max_hp=30, ac=16, atk_bonus=5, damage_dice="1d8+3", glyph="K",
+              str_score=16, dex_score=12, con_score=14, int_score=8, wis_score=10, cha_score=10,
+              char_class="Fighter", race="Tiefling"),
+        # Gale — Wizard, Human. INT cao, caster.
+        Actor("Gale", "party", hp=22, max_hp=22, ac=13, atk_bonus=6, damage_dice="1d10+4", glyph="G",
+              str_score=8, dex_score=14, con_score=12, int_score=16, wis_score=12, cha_score=10,
+              char_class="Wizard", race="Human"),
+        # Astarion — Rogue, Elf. DEX cao, scout/sneak.
+        Actor("Astarion", "party", hp=20, max_hp=20, ac=14, atk_bonus=4, damage_dice="1d6+3", glyph="A",
+              str_score=9, dex_score=16, con_score=14, int_score=12, wis_score=10, cha_score=13,
+              char_class="Rogue", race="Elf"),
+        # Jennevelle — Cleric, Half-Elf. WIS cao, healer.
+        Actor("Jennevelle", "party", hp=28, max_hp=28, ac=17, atk_bonus=5, damage_dice="1d8+3", glyph="J",
+              str_score=14, dex_score=10, con_score=13, int_score=11, wis_score=16, cha_score=12,
+              char_class="Cleric", race="Half-Elf"),
     ]
 
 def make_monsters() -> list:

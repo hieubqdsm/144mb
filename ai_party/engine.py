@@ -47,6 +47,8 @@ class Actor:
     wis_score: int = 10
     cha_score: int = 10
     stealth_bonus: int = 0         # +6 goblin, +0 mặc định
+    char_class: str = ""           # "Fighter", "Wizard", "Cleric", "Rogue"
+    race: str = ""                 # "Human", "Elf", "Tiefling", "Half-Elf"
     inventory: list = field(default_factory=list)  # [{name, qty, type}]
     surprised: bool = False        # D&D 5e: surprised = mất turn đầu
     reaction_used: bool = False    # D&D 5e: 1 reaction/round (cho opp attack)
@@ -72,6 +74,10 @@ class Actor:
             "hp": self.hp,
             "max_hp": self.max_hp,
             "ac": self.ac,
+            "str": self.str_score, "dex": self.dex_score, "con": self.con_score,
+            "int": self.int_score, "wis": self.wis_score, "cha": self.cha_score,
+            "class": self.char_class,
+            "race": self.race,
             "conditions": list(self.conditions),
             "alive": self.alive,
             "team": self.team,

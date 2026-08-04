@@ -131,10 +131,10 @@ class MockDecisionMaker:
     Trong Phase 2 sẽ thay bằng LLM thật.
     """
     PERSONALITIES = {
-        "Thorin": "hung hăng, luôn tấn công trước",
-        "Elara": "pháp sư, ưu tiên spell nếu nhiều enemy",
-        "Lyra": "rogue, thích nói chuyện + chiến thuật",
-        "Bjorn": "cleric, thận trọng, ưu tiên heal nếu HP thấp",
+        "Karlach": "Fighter Tiefling máu lửa",
+        "Gale": "Wizard Human thông minh",
+        "Astarion": "Rogue Elf tinh tế",
+        "Jennevelle": "Cleric Half-Elf đức độ",
     }
 
     def __init__(self, name: str):
@@ -142,74 +142,75 @@ class MockDecisionMaker:
         self.personality = self.PERSONALITIES.get(name, "cân bằng")
 
     def decide_combat(self, state: GameState, actor: Actor) -> dict:
-        """Heuristic combat: attack lowest-HP enemy. Wizard/Cleric ưu tiên cast."""
+        """Heuristic combat theo CLASS. Cleric = HEALER, không lao vào đánh."""
         targets = [a for a in state.actors if a.alive and a.team != actor.team]
         if not targets:
             return make_action("wait", say=f"{self.name} không thấy mục tiêu.")
         target = min(targets, key=lambda a: a.hp)
 
-        # Wizard (Elara): cast spell nếu có target trong range
-        if self.name == "Elara":
-            # Nếu target xa, dùng fire_bolt (ranged)
-            if not in_melee_range(actor, target):
-                return make_action("cast", target=target.name,
-                                   args={"spell": "fire_bolt"},
-                                   say=f"Fire Bolt vào {target.name}!")
-            # Nếu nhóm enemy gần nhau, Burning Hands AoE
-            clustered = sum(1 for t in targets if distance_ft(target, t) <= 15)
-            if clustered >= 2:
-                return make_action("cast", target=target.name,
-                                   args={"spell": "burning_hands"},
-                                   say="Burning Hands! 🔥")
-
-        # Cleric (Bjorn): ưu tiên cứu dying > heal HP thấp > sacred_flame
-        if self.name == "Bjorn":
+        # Cleric (Jennevelle): HEALER — ưu tiên heal, chỉ đánh khi HP đầy
+        if self.name == "Jennevelle":
+            # 1. Cứu dying trước
             dying_allies = [a for a in state.actors if getattr(a, 'dying', False) and a.team == "party"]
             if dying_allies:
                 patient = dying_allies[0]
                 return make_action("cast", target=patient.name,
                                    args={"spell": "cure_wounds"},
                                    say=f"Cứu {patient.name}!")
+            # 2. Heal nếu ai dưới 50% HP
             hurt_allies = [a for a in state.actors if a.alive and a.team == "party" and a.hp < a.max_hp // 2]
             if hurt_allies:
                 patient = min(hurt_allies, key=lambda a: a.hp)
                 return make_action("cast", target=patient.name,
                                    args={"spell": "cure_wounds"},
                                    say=f"Chữa thương cho {patient.name}!")
+            # 3. Sacred Flame nếu mọi người HP ổn
             return make_action("cast", target=target.name,
                                args={"spell": "sacred_flame"},
                                say=f"Sacred Flame trừng trị {target.name}!")
 
-        # Fighter/Rogue: attack melee (move tới nếu xa)
+        # Wizard (Gale): cast spell
+        if self.name == "Gale":
+            if not in_melee_range(actor, target):
+                return make_action("cast", target=target.name,
+                                   args={"spell": "fire_bolt"},
+                                   say=f"Fire Bolt vào {target.name}!")
+            clustered = sum(1 for t in targets if distance_ft(target, t) <= 15)
+            if clustered >= 2:
+                return make_action("cast", target=target.name,
+                                   args={"spell": "burning_hands"},
+                                   say="Burning Hands! 🔥")
+
+        # Fighter (Karlach) / Rogue (Astarion): attack melee
         if not in_melee_range(actor, target):
             return make_action("move", target=target.name,
                                say=f"{self.name} tiến lại gần {target.name}!")
         say = ""
-        if self.name == "Thorin":
-            say = f"Tôi giữ tên {target.name}!"
-        elif self.name == "Lyra":
-            say = f"Đội ơi tập trung vào {target.name}."
+        if self.name == "Karlach":
+            say = f"Ăn đòn này, {target.name}!"
+        elif self.name == "Astarion":
+            say = f"Lén đánh {target.name}!"
         return make_action("attack", target=target.name, say=say)
 
     def decide_loot(self, item: dict, party: list) -> dict:
         """Heuristic loot: luôn take, give_to người phù hợp."""
-        give_to = party[0].name  # default Fighter
+        give_to = party[0].name
         if "Potion" in item.get("name", ""):
-            give_to = next((a.name for a in party if "Bjorn" in a.name), party[0].name)
+            give_to = next((a.name for a in party if "Jennevelle" in a.name), party[0].name)
         elif "Shortbow" in item.get("name", ""):
-            give_to = next((a.name for a in party if "Lyra" in a.name), party[0].name)
+            give_to = next((a.name for a in party if "Astarion" in a.name), party[0].name)
+        elif "Staff" in item.get("name", ""):
+            give_to = next((a.name for a in party if "Gale" in a.name), party[0].name)
         return {"take": True, "give_to": give_to}
 
     def decide_town_choice(self, choices: list) -> dict:
-        """Mock heuristic: chọn theo personality + visit count.
-        _town_visit_count được set bởi handle_town (luân phiên party member)."""
+        """Mock heuristic: chọn theo personality + visit count."""
         visit = getattr(self, "_town_visit_count", 0)
-        # Theo personality + vị trí trong luân phiên
         prefs = {
-            "Thorin": ["talk_barthen", "rest_inn"],
-            "Elara": ["talk_garaele"],
-            "Lyra": ["talk_halia"],
-            "Bjorn": ["rest_inn"],
+            "Karlach": ["talk_barthen", "rest_inn"],
+            "Gale": ["talk_garaele"],
+            "Astarion": ["talk_halia"],
+            "Jennevelle": ["rest_inn"],
         }
         pref_list = prefs.get(self.name, ["talk_barthen"])
         idx = min(visit // len(prefs), len(pref_list) - 1)
@@ -254,10 +255,10 @@ class LLMDecisionMaker:
     Fallback heuristic nếu LLM fail (no key / network error).
     """
     PERSONALITIES = {
-        "Thorin": "Fighter dũng cảm, luôn tiên phong tấn công. Nói chuyện trực tiếp, ngắn gọn.",
-        "Elara": "Wizard thông minh, ưu tiên phép thuật nếu nhiều enemy. Hay phân tích tình hình.",
-        "Lyra": "Rogue thận trọng, hay quan sát + góp ý chiến thuật. Thích đánh lén kẻ yếu.",
-        "Bjorn": "Cleric đức độ, quan tâm đồng đội, ưu tiên heal nếu ai HP thấp. Nói năng tích cực.",
+        "Karlach": "Fighter Tiefling máu lửa, lao vào tiên phong tank, nói chuyện nhiệt huyết.",
+        "Gale": "Wizard Human thông minh, ưu tiên AoE spells, hay phân tích tình hình.",
+        "Astarion": "Rogue Elf tinh tế, thích đánh lén kẻ yếu, hay góp ý chiến thuật.",
+        "Jennevelle": "Cleric Half-Elf đức độ, là HEALER — ưu tiên heal đồng đội HP thấp TRƯỚC, chỉ đánh khi mọi người HP đầy.",
     }
 
     def __init__(self, name: str, llm_client):
@@ -267,10 +268,38 @@ class LLMDecisionMaker:
         self.history = []  # conversation memory
 
     def _build_system(self) -> str:
-        return (f"Bạn là {self.name}, một hero trong party D&D 5e. "
-                f"Tính cách: {self.personality}\n"
+        return (f"Bạn là {self.name}, {self.personality}\n"
+                f"Vai trò: {self._role_desc()}\n"
+                f"Spells khả dụng: {', '.join(self._available_spells())}\n"
                 f"Trả lời qua function choose_action. "
-                f"Bạn nói tiếng Việt. Cooperate với đồng đội (có thể dùng trường 'say').")
+                f"Bạn nói tiếng Việt. Cooperate với đồng đội (dùng 'say'). "
+                f"KHÔNG bịa spell — chỉ dùng spell trong list.")
+
+    def _role_desc(self) -> str:
+        """Mô tả vai trò theo class."""
+        roles = {
+            "Fighter": "Tank/Melee — xông lên tiên phong, chịu đòn, càn quét kẻ yếu",
+            "Wizard": "Caster — đứng sau, dùng AoE (burning_hands) nếu địch đông, fire_bolt nếu đơn lẻ",
+            "Rogue": "Skirmisher — lén đánh kẻ yếu máu thấp, né tránh",
+            "Cleric": "HEALER — ưu tiên HEAL đồng đội HP thấp/dying TRƯỚC TIÊN, chỉ đánh khi HP đầy",
+        }
+        for k, v in roles.items():
+            if k.lower() in self.personality.lower():
+                return v
+        return "Combat"
+
+    def _available_spells(self) -> list:
+        """Spells khả dụng theo class."""
+        spells = {
+            "Fighter": ["fire_bolt"],
+            "Wizard": ["fire_bolt", "magic_missile", "burning_hands"],
+            "Cleric": ["sacred_flame", "cure_wounds", "healing_word"],
+            "Rogue": [],
+        }
+        for k, v in spells.items():
+            if k.lower() in self.personality.lower():
+                return v
+        return []
 
     def decide_combat(self, state, actor) -> dict:
         if not self.llm or not self.llm.is_available():
@@ -700,7 +729,7 @@ def handle_loot(node: SceneNode, party, rng, deciders):
     loot = gen_loot(node.loot_source, 4, rng)
     engine_log(f"Loot roll: {loot['gold']} gold + {len(loot['items'])} items")
     # Dùng engine offer_loot_to_party: AI chọn take/leave/give_to, engine update inventory
-    d = deciders["Bjorn"]  # AI loot decider (demo)
+    d = deciders["Jennevelle"]  # AI loot decider (Cleric)
     dist = offer_loot_to_party(party, loot, d.decide_loot)
     for entry in dist["distributed"]:
         player_say(entry["actor"], f"Nhận: {entry['item']}")
@@ -832,8 +861,10 @@ def run_flow(start_node_id: str = "neverwinter_inn", seed: int = None,
 
     sep(f"ĐỘI HÙNG (Party)")
     for a in party:
-        print(f"  {a.name:8s} HP {a.hp}/{a.max_hp}  AC {a.ac}  "
-              f"WIS {a.wis_score}(passive {a.passive_perception()})  DEX {a.dex_score}")
+        print(f"  {a.name:12s} {a.char_class:8s} {a.race:10s} "
+              f"HP {a.hp}/{a.max_hp}  AC {a.ac}  "
+              f"STR {a.str_score} DEX {a.dex_score} CON {a.con_score} "
+              f"INT {a.int_score} WIS {a.wis_score} CHA {a.cha_score}")
     print()
 
     node_id = start_node_id
