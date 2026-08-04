@@ -472,6 +472,10 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                 pause()
                 continue
 
+            # Check alive sau opp attack (actor có thể chết khi move)
+            if not actor.alive:
+                continue
+
             # Player hoặc monster decide
             if actor.team == "party":
                 d = deciders[actor.name]
@@ -528,7 +532,10 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                             continue
                     r = resolve_attack(actor, target, rng)
                     state.log.append(r)
-                    if r["crit"]:
+                    if not r.get("ok", True):
+                        pause()
+                        continue
+                    if r.get("crit"):
                         tag = ca("💥 CRIT", C_CRIT)
                     elif r["hit"]:
                         tag = ca("⚔️ HIT", C_HIT)
