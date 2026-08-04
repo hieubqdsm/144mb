@@ -326,6 +326,17 @@ NODES = {
         next="",
     ),
 
+    "end_failed": SceneNode(
+        node_id="end_failed",
+        scene_type="END",
+        title="Campaign thất bại",
+        narration=(
+            "Party thất bại trong encounter. "
+            "Không thể tiếp tục LMoP — cần hồi sức hoặc tuyển thêm thành viên."
+        ),
+        next="",
+    ),
+
     "end_demo": SceneNode(
         node_id="end_demo",
         scene_type="END",

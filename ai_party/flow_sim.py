@@ -503,11 +503,17 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                 d = deciders[actor.name]
                 action = d.decide_combat(state, actor)
             else:
-                # Monster AI: attack nearest (engine auto-move-then-attack)
-                targets = [a for a in state.actors if a.alive and a.team != actor.team]
+                # Monster AI: attack nearest (alive OR dying)
+                targets = [a for a in state.actors
+                           if (a.alive or getattr(a, 'dying', False)) and a.team != actor.team]
                 if not targets:
                     continue
-                target = min(targets, key=lambda a: distance_ft(actor, a))
+                # Ưu tiên dying targets (đánh chốt!) rồi nearest
+                dying_targets = [a for a in targets if getattr(a, 'dying', False)]
+                if dying_targets:
+                    target = min(dying_targets, key=lambda a: distance_ft(actor, a))
+                else:
+                    target = min(targets, key=lambda a: distance_ft(actor, a))
                 action = make_action("attack", target=target.name)
 
             # Show chat
@@ -563,7 +569,12 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                         tag = ca("⚔️ HIT", C_HIT)
                     else:
                         tag = ca("💨 miss", C_MISS)
-                    dead_tag = f" {ca('💀DEAD', C_DEAD)}" if r.get("target_hp_after", 1) <= 0 else ""
+                    dead_tag = ""
+                    if r.get("target_hp_after", 1) <= 0:
+                        if getattr(target, 'dying', False):
+                            dead_tag = f" {ca('⚠️DYING', C_OPP)}"
+                        elif not target.alive:
+                            dead_tag = f" {ca('💀DEAD', C_DEAD)}"
                     print(f"  {tag} {cn(actor.name)} → {cn(target.name)}: "
                           f"{r['damage']}dmg (HP {r['target_hp_after']}/{target.max_hp}){dead_tag}")
 
@@ -660,8 +671,28 @@ def handle_travel(node: SceneNode, party, rng, deciders):
 def handle_combat(node: SceneNode, party, rng, deciders, party_surprised=None):
     dm_say(node.narration)
     result = run_combat(node, party, rng, deciders, party_surprised)
-    return {"combat_result": result, "next": node.next,
-            "winner": result["winner"]}
+    winner = result["winner"]
+    if winner == "draw":
+        # Draw = hết round → monsters thắng (party fail encounter)
+        winner = "monsters"
+        result_log(f"⏰ Hết time! Party thua encounter này.")
+    if winner == "monsters":
+        # Party thua → chặn flow, campaign kết thúc
+        dm_say(f"Party thất bại! {node.title} chưa hoàn thành. "
+               "Cần long rest trước khi thử lại, hoặc cần reinforcement.")
+        return {"combat_result": result, "next": "end_failed", "winner": "monsters"}
+    # Party thắng → short rest (D&D 5e: 1 giờ nghỉ giữa encounter, hồi 1 Hit Die)
+    dm_say("⚔️ Chiến thắng! Party nghỉ ngắn (short rest) — hồi một ít HP.")
+    for a in party:
+        if a.alive:
+            # Short rest: hồi 1d8+CON HP (giản lược D&D 5e Hit Die)
+            import random as _r
+            heal = _r.randint(1, 8) + a.ability_mod("con")
+            if heal < 1: heal = 1
+            a.hp = min(a.hp + heal, a.max_hp)
+            print(f"    {cn(a.name)} hồi {ca(str(heal)+'HP', C_HEAL)} (HP {a.hp}/{a.max_hp})")
+    pause()
+    return {"combat_result": result, "next": node.next, "winner": "party"}
 
 def handle_loot(node: SceneNode, party, rng, deciders):
     dm_say(node.narration)
