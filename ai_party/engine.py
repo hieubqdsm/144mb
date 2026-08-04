@@ -275,17 +275,19 @@ def add_init(actor: Actor, rng: random.Random):
 # =============================================================================
 
 def roll_surprise(party: list, monsters: list, rng: random.Random,
-                  monsters_stealth_bonus: int = 6,
-                  party_stealth_bonus: int = 0) -> dict:
+                  monsters_stealth_bonus: int = 6) -> dict:
     """
-    D&D 5e ambush: cả 2 phía có thể surprised.
-    - Monsters Stealth (d20 + stealth_bonus) vs Party passive Perception (10 + WIS).
-    - Party Stealth (d20 + bonus) vs Monsters passive Perception.
-    Ai thua = surprised (mất turn đầu round 1).
+    D&D 5e ambush logic:
+    - Monsters chủ động nấp (Stealth) → monsters KHÔNG bị surprise.
+    - Party đi lộ trên đường → chỉ party mới có thể bị surprise.
+    - Monster Stealth (d20 + stealth_bonus) vs Party passive Perception (10 + WIS mod).
+    - Party bị surprise nếu passive perception < monster stealth roll.
 
-    Return: {party_surprised: [names], monsters_surprised: [names], spotted: bool}
+    Party stealth mode (đi lén → monster có thể bị surprise) → để sau.
+
+    Return: {party_surprised: [names], monsters_surprised: [], spotted: bool}
     """
-    # Monsters Stealth vs Party Perception
+    # Monsters Stealth vs Party passive Perception
     monster_stealth = d20(rng) + monsters_stealth_bonus
     party_pp = max(a.passive_perception() for a in party)
 
@@ -293,21 +295,12 @@ def roll_surprise(party: list, monsters: list, rng: random.Random,
     if monster_stealth > party_pp:
         party_surprised = [a.name for a in party]
 
-    # Party Stealth vs Monsters Perception (cho dungeon exploration)
-    party_stealth = d20(rng) + party_stealth_bonus
-    monster_pp = max(10 + a.ability_mod("wis") for a in monsters) if monsters else 10
-
-    monsters_surprised = []
-    if party_stealth > monster_pp:
-        monsters_surprised = [a.name for a in monsters]
-
+    # Monsters KHÔNG bị surprise (chúng chủ động phục kích)
     return {
         "party_surprised": party_surprised,
-        "monsters_surprised": monsters_surprised,
+        "monsters_surprised": [],
         "monster_stealth_roll": monster_stealth,
         "party_passive_perception": party_pp,
-        "party_stealth_roll": party_stealth,
-        "monster_passive_perception": monster_pp,
         "spotted": len(party_surprised) == 0,
     }
 
