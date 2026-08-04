@@ -21,6 +21,11 @@ import sys
 import time
 import random
 import argparse
+import os
+
+# Enable ANSI color on Windows console
+if sys.platform == "win32":
+    os.system("")   # activate ANSI VT100 processing
 
 from engine import (Actor, GameState, resolve_attack, d20, add_init,
                     roll_surprise, gen_loot, offer_loot_to_party,
@@ -33,6 +38,50 @@ from agents import make_party, make_monsters, make_redbrands, make_skeletons, ma
 # Global config (set từ CLI args)
 G_SPEED = 1.5      # delay giây giữa turn/scene
 G_DISCUSS = False  # thêm phase thảo luận
+
+# =============================================================================
+# ANSI COLOR HELPERS
+# =============================================================================
+
+# Palette cho tên nhân vật (8 màu sáng, dễ đọc trên nền đen)
+NAME_COLORS = ['\033[96m', '\033[93m', '\033[92m', '\033[95m',
+               '\033[94m', '\033[97m', '\033[33m', '\033[36m']
+RESET = '\033[0m'
+BOLD = '\033[1m'
+
+# Action colors
+C_HIT     = '\033[92m'   # xanh lá
+C_CRIT    = '\033[91m'   # đỏ
+C_MISS    = '\033[90m'   # xám
+C_CAST    = '\033[96m'   # cyan
+C_AOE     = '\033[95m'   # magenta
+C_OPP     = '\033[93m'   # vàng
+C_MOVE    = '\033[94m'   # xanh dương
+C_DEAD    = '\033[91m'   # đỏ
+C_HEAL    = '\033[92m'   # xanh lá
+C_ENGINE  = '\033[90m'   # xám
+C_RESULT  = '\033[92m'   # xanh lá
+
+_name_cache = {}   # name → color (cache để cùng tên = cùng màu)
+
+def name_color(name: str) -> str:
+    """Hash tên → ANSI color cố định (cùng tên = cùng màu)."""
+    if name in _name_cache:
+        return _name_cache[name]
+    h = 0
+    for c in name:
+        h = (h * 31 + ord(c)) & 0x7FFFFFFF
+    color = NAME_COLORS[h % len(NAME_COLORS)]
+    _name_cache[name] = color
+    return color
+
+def cn(name: str) -> str:
+    """Colorize tên: trả về tên với ANSI color."""
+    return f"{name_color(name)}{BOLD}{name}{RESET}"
+
+def ca(text: str, color: str) -> str:
+    """Colorize action text."""
+    return f"{color}{text}{RESET}"
 
 
 # =============================================================================
@@ -50,25 +99,25 @@ def pause():
 # =============================================================================
 
 def sep(title: str):
-    print("\n" + "═" * 70)
-    print(f"  {title}")
-    print("═" * 70)
+    print(f"\n{ca('═' * 70, C_ENGINE)}")
+    print(f"  {BOLD}{title}{RESET}")
+    print(ca("═" * 70, C_ENGINE))
 
 def dm_say(text: str):
     """DM narration box."""
-    print("\n┌─ DM ────────────────────────────────────────────────────────────┐")
+    print(f"\n{ca('┌─', C_ENGINE)} {BOLD}DM{RESET}{ca(' ────────────────────────────────────────────────────────────┐', C_ENGINE)}")
     for line in text.split("\n"):
-        print(f"│ {line}")
-    print("└──────────────────────────────────────────────────────────────────┘")
+        print(f"{ca('│', C_ENGINE)} {line}")
+    print(ca("└──────────────────────────────────────────────────────────────────┘", C_ENGINE))
 
 def player_say(name: str, text: str):
-    print(f"  💬 {name}: {text}")
+    print(f"  💬 {cn(name)}: {text}")
 
 def engine_log(text: str):
-    print(f"    ⚙️  {text}")
+    print(f"    {ca('⚙️  ' + text, C_ENGINE)}")
 
 def result_log(text: str):
-    print(f"    ✅ {text}")
+    print(f"    {ca('✅ ' + text, C_RESULT)}")
 
 
 # =============================================================================
@@ -460,11 +509,11 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                             mr = step_toward(actor, target, state.actors, rng)
                             if not mr.get("ok"):
                                 break
-                            print(f"  🏃 {actor.name} move {mr['from']}→{mr['to']}")
+                            print(f"  {ca('🏃', C_MOVE)} {cn(actor.name)} move {mr['from']}→{mr['to']}")
                             for opp in mr.get("opportunity_attacks", []):
                                 opr = opp["result"]
-                                tag = "HIT" if opr.get("hit") else "miss"
-                                print(f"  ⚔️ OPP ATTACK {opp['attacker']} → {actor.name}: {tag} {opr.get('damage',0)}dmg")
+                                tag = ca("HIT", C_OPP) if opr.get("hit") else ca("miss", C_MISS)
+                                print(f"  {ca('⚔️ OPP', C_OPP)} {cn(opp['attacker'])} → {cn(actor.name)}: {tag} {opr.get('damage',0)}dmg")
                                 # Check nếu actor chết sau opp attack
                                 if not actor.alive:
                                     print(f"  💀 {actor.name} bị giết bởi opp attack!")
@@ -479,9 +528,14 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                             continue
                     r = resolve_attack(actor, target, rng)
                     state.log.append(r)
-                    tag = "💥 CRIT" if r["crit"] else ("⚔️ HIT" if r["hit"] else "💨 miss")
-                    dead_tag = " 💀DEAD" if r.get("target_hp_after", 1) <= 0 else ""
-                    print(f"  {tag} {actor.name} → {target.name}: "
+                    if r["crit"]:
+                        tag = ca("💥 CRIT", C_CRIT)
+                    elif r["hit"]:
+                        tag = ca("⚔️ HIT", C_HIT)
+                    else:
+                        tag = ca("💨 miss", C_MISS)
+                    dead_tag = f" {ca('💀DEAD', C_DEAD)}" if r.get("target_hp_after", 1) <= 0 else ""
+                    print(f"  {tag} {cn(actor.name)} → {cn(target.name)}: "
                           f"{r['damage']}dmg (HP {r['target_hp_after']}/{target.max_hp}){dead_tag}")
 
             # === EXECUTE CAST ===
@@ -492,23 +546,22 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                     r = cast_spell(spell_id, actor, target, state.actors, rng)
                     if r.get("ok"):
                         if r.get("aoe"):
-                            # AoE: hiện từng target
-                            print(f"  ✨ {actor.name} cast {r['spell']} (AoE {r['aoe_ft']}ft)!")
+                            print(f"  {ca('✨ AOE', C_AOE)} {cn(actor.name)} cast {ca(r['spell'], C_CAST)} (AoE {r['aoe_ft']}ft)!")
                             for tr in r.get("results", []):
                                 if tr.get("damage", 0) > 0:
-                                    print(f"    → {tr['target']}: {tr['damage']}dmg ({tr['desc']}) HP={tr.get('hp_after','?')}")
+                                    print(f"    → {cn(tr['target'])}: {tr['damage']}dmg ({tr['desc']}) HP={tr.get('hp_after','?')}")
                                 elif tr.get("heal"):
-                                    print(f"    → {tr['target']}: +{tr['heal']}HP HP={tr.get('hp_after','?')}")
+                                    print(f"    → {cn(tr['target'])}: +{ca(str(tr['heal'])+'HP', C_HEAL)} HP={tr.get('hp_after','?')}")
                                 else:
-                                    print(f"    → {tr['target']}: {tr.get('desc','no effect')}")
+                                    print(f"    → {cn(tr['target'])}: {tr.get('desc','no effect')}")
                         else:
                             tr = r.get("result", {})
                             if tr.get("damage", 0) > 0:
-                                print(f"  ✨ {actor.name} cast {r['spell']} → {tr['target']}: {tr['damage']}dmg ({tr['desc']}) HP={tr.get('hp_after','?')}")
+                                print(f"  {ca('✨', C_CAST)} {cn(actor.name)} cast {ca(r['spell'], C_CAST)} → {cn(tr['target'])}: {tr['damage']}dmg ({tr['desc']}) HP={tr.get('hp_after','?')}")
                             elif tr.get("heal"):
-                                print(f"  ✨ {actor.name} cast {r['spell']} → {tr['target']}: +{tr['heal']}HP HP={tr.get('hp_after','?')}")
+                                print(f"  {ca('✨', C_HEAL)} {cn(actor.name)} cast {ca(r['spell'], C_HEAL)} → {cn(tr['target'])}: +{tr['heal']}HP HP={tr.get('hp_after','?')}")
                             else:
-                                print(f"  ✨ {actor.name} cast {r['spell']}: {tr.get('desc','effect')}")
+                                print(f"  {ca('✨', C_CAST)} {cn(actor.name)} cast {ca(r['spell'], C_CAST)}: {tr.get('desc','effect')}")
 
             # === EXECUTE MOVE ===
             elif a["verb"] == "move":
@@ -526,12 +579,11 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                 else:
                     r = {"ok": False, "reason": "move cần dx/dy hoặc target"}
                 if r.get("ok"):
-                    print(f"  🏃 {actor.name} move {r['from']}→{r['to']}")
-                    # Opportunity attacks
+                    print(f"  {ca('🏃', C_MOVE)} {cn(actor.name)} move {r['from']}→{r['to']}")
                     for opp in r.get("opportunity_attacks", []):
                         opr = opp["result"]
-                        tag = "HIT" if opr.get("hit") else "miss"
-                        print(f"  ⚔️ OPP ATTACK {opp['attacker']} → {actor.name}: {tag} {opr.get('damage',0)}dmg")
+                        tag = ca("HIT", C_OPP) if opr.get("hit") else ca("miss", C_MISS)
+                        print(f"  {ca('⚔️ OPP', C_OPP)} {cn(opp['attacker'])} → {cn(actor.name)}: {tag} {opr.get('damage',0)}dmg")
                 else:
                     print(f"  ⚠️ {actor.name} move fail: {r.get('reason','?')}")
 
