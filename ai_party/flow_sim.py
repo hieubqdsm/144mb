@@ -465,7 +465,13 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                                 opr = opp["result"]
                                 tag = "HIT" if opr.get("hit") else "miss"
                                 print(f"  ⚔️ OPP ATTACK {opp['attacker']} → {actor.name}: {tag} {opr.get('damage',0)}dmg")
+                                # Check nếu actor chết sau opp attack
+                                if not actor.alive:
+                                    print(f"  💀 {actor.name} bị giết bởi opp attack!")
+                                    break
                             moved += 1
+                            if not actor.alive:
+                                break
                         pause()
                         if not in_melee_range(actor, target):
                             print(f"  ⚠️ {actor.name} hết movement, chưa tới {target.name} ({distance_ft(actor,target)}ft)")
@@ -474,8 +480,9 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
                     r = resolve_attack(actor, target, rng)
                     state.log.append(r)
                     tag = "💥 CRIT" if r["crit"] else ("⚔️ HIT" if r["hit"] else "💨 miss")
+                    dead_tag = " 💀DEAD" if r.get("target_hp_after", 1) <= 0 else ""
                     print(f"  {tag} {actor.name} → {target.name}: "
-                          f"{r['damage']}dmg (HP {r['target_hp_after']}/{target.max_hp})")
+                          f"{r['damage']}dmg (HP {r['target_hp_after']}/{target.max_hp}){dead_tag}")
 
             # === EXECUTE CAST ===
             elif a["verb"] == "cast":
