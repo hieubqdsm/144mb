@@ -50,6 +50,10 @@ class Actor:
     inventory: list = field(default_factory=list)  # [{name, qty, type}]
     surprised: bool = False        # D&D 5e: surprised = mất turn đầu
     reaction_used: bool = False    # D&D 5e: 1 reaction/round (cho opp attack)
+    # Death save (D&D 5e: HP=0 = dying, chưa chết ngay)
+    dying: bool = False            # True = HP 0, đang dying
+    death_saves_success: int = 0   # 3 = stable
+    death_saves_fail: int = 0      # 3 = dead
 
     def ability_mod(self, ability: str) -> int:
         """Mod = floor((score-10)/2). ability = 'str'|'dex'|'con'|'int'|'wis'|'cha'."""
@@ -127,7 +131,7 @@ def resolve_attack(attacker: Actor, target: Actor, rng: random.Random) -> dict:
 
     Giống combat_resolve_attack trong src_console/game/combat.c.
     """
-    if not attacker.alive or not target.alive:
+    if not attacker.alive or (not target.alive and not getattr(target, 'dying', False)):
         return {"ok": False, "reason": "actor_dead"}
 
     nat = d20(rng)
@@ -158,7 +162,11 @@ def resolve_attack(attacker: Actor, target: Actor, rng: random.Random) -> dict:
 
     if target.hp <= 0:
         target.hp = 0
-        target.alive = False
+        # D&D 5e: HP=0 = dying (chưa chết), có thể cứu bằng death save / heal
+        if not target.dying and target.team == "party":
+            target.dying = True   # party member → dying (có death save)
+        else:
+            target.alive = False  # monster hoặc damage sau khi dying → dead
 
     return {
         "ok": True,
@@ -205,14 +213,56 @@ class GameState:
         return alive[self.turn_index % len(alive)]
 
     def check_combat_over(self) -> Optional[str]:
-        """Trả về team thắng hoặc None."""
-        party_alive = any(a.alive for a in self.actors if a.team == "party")
-        monsters_alive = any(a.alive for a in self.actors if a.team == "monsters")
-        if not party_alive:
+        """Trả về team thắng hoặc None. Dying actors vẫn được tính (có thể cứu)."""
+        # Party: alive OR dying (chưa chết hẳn, có thể cứu)
+        party_up = any(a.alive or getattr(a, 'dying', False) for a in self.actors if a.team == "party")
+        monsters_up = any(a.alive or getattr(a, 'dying', False) for a in self.actors if a.team == "monsters")
+        if not party_up:
             return "monsters"
-        if not monsters_alive:
+        if not monsters_up:
             return "party"
         return None
+
+
+def roll_death_save(actor: Actor, rng: random.Random) -> dict:
+    """
+    D&D 5e death save. Gọi đầu turn khi actor đang dying.
+    d20: 10+ = success, <10 = fail. nat20 = 2 success, nat1 = 2 fail.
+    3 success = stable, 3 fail = dead.
+    """
+    if not actor.dying:
+        return {"ok": False, "reason": "not dying"}
+    roll = d20(rng)
+    if roll == 20:
+        actor.death_saves_success += 2
+        desc = "nat20! 2 success"
+        # nat20 = revive 1 HP
+        actor.hp = 1
+        actor.dying = False
+        actor.death_saves_success = 0
+        actor.death_saves_fail = 0
+        return {"ok": True, "roll": roll, "result": "revived", "desc": desc + " — HỒI SINH 1HP!"}
+    elif roll == 1:
+        actor.death_saves_fail += 2
+        desc = "nat1! 2 fail"
+    elif roll >= 10:
+        actor.death_saves_success += 1
+        desc = f"success ({roll})"
+    else:
+        actor.death_saves_fail += 1
+        desc = f"fail ({roll})"
+
+    if actor.death_saves_success >= 3:
+        actor.dying = False
+        actor.death_saves_success = 0
+        actor.death_saves_fail = 0
+        return {"ok": True, "roll": roll, "result": "stable", "desc": desc + " — ỔN ĐỊNH (3 success)"}
+    if actor.death_saves_fail >= 3:
+        actor.alive = False
+        actor.dying = False
+        return {"ok": True, "roll": roll, "result": "dead", "desc": desc + " — CHẾT (3 fail)"}
+    return {"ok": True, "roll": roll, "result": "ongoing",
+            "desc": f"{desc} (success:{actor.death_saves_success}/fail:{actor.death_saves_fail})"}
 
 
 # Patch: thêm init field để resolve turn order (đơn giản hóa demo)
@@ -225,31 +275,39 @@ def add_init(actor: Actor, rng: random.Random):
 # =============================================================================
 
 def roll_surprise(party: list, monsters: list, rng: random.Random,
-                  monsters_stealth_bonus: int = 6) -> dict:
+                  monsters_stealth_bonus: int = 6,
+                  party_stealth_bonus: int = 0) -> dict:
     """
-    Monsters roll Stealth (d20 + stealth_bonus). Party passive Perception = 10 + WIS mod.
-    D&D 5e: ai dưới DC Stealth = surprised (mất turn đầu round 1).
+    D&D 5e ambush: cả 2 phía có thể surprised.
+    - Monsters Stealth (d20 + stealth_bonus) vs Party passive Perception (10 + WIS).
+    - Party Stealth (d20 + bonus) vs Monsters passive Perception.
+    Ai thua = surprised (mất turn đầu round 1).
 
-    Return: {party_surprised: [names], monsters_surprised: [names], rolls: [...]}
+    Return: {party_surprised: [names], monsters_surprised: [names], spotted: bool}
     """
-    # Monsters Stealth - lấy roll cao nhất (đại diện best spotter của nhóm)
+    # Monsters Stealth vs Party Perception
     monster_stealth = d20(rng) + monsters_stealth_bonus
-    # Party passive Perception - best spotter
     party_pp = max(a.passive_perception() for a in party)
 
     party_surprised = []
     if monster_stealth > party_pp:
-        # Toàn bộ party bị surprised (không ai phát hiện)
         party_surprised = [a.name for a in party]
 
-    # Monsters luôn surprise vì party lộ trên đường (không ẩn)
-    # Trong D&D 5e thật cả 2 phía roll, nhưng LMoP ambush monsters chủ động
+    # Party Stealth vs Monsters Perception (cho dungeon exploration)
+    party_stealth = d20(rng) + party_stealth_bonus
+    monster_pp = max(10 + a.ability_mod("wis") for a in monsters) if monsters else 10
+
+    monsters_surprised = []
+    if party_stealth > monster_pp:
+        monsters_surprised = [a.name for a in monsters]
 
     return {
         "party_surprised": party_surprised,
-        "monsters_surprised": [],   # monsters không bị surprise trong LMoP ambush
+        "monsters_surprised": monsters_surprised,
         "monster_stealth_roll": monster_stealth,
         "party_passive_perception": party_pp,
+        "party_stealth_roll": party_stealth,
+        "monster_passive_perception": monster_pp,
         "spotted": len(party_surprised) == 0,
     }
 
@@ -289,17 +347,21 @@ LOOT_TABLES = {
 
 
 def gen_loot(monster_type: str, count: int, rng: random.Random) -> dict:
-    """Roll treasure cho N quái cùng loại. Return {gold, items: [...]}."""
+    """Roll treasure cho encounter (không phải per-monster).
+    Mỗi loại item chỉ drop 1 lần (stack qty), gold scale theo count.
+    Return {gold, items: [...]}."""
     table = LOOT_TABLES.get(monster_type, [])
     total_gold = 0
     items = []
-    for _ in range(count):
-        for entry in table:
-            if rng.random() < entry["chance"]:
-                if entry["type"] == "gold":
-                    total_gold += roll_dice(entry["dice"], rng)
-                elif entry["type"] == "item":
-                    items.append({"name": entry["name"], "qty": 1})
+    seen = set()   # track item names đã drop (tránh duplicate)
+    # Roll gold: 1 lần cho cả encounter (scale theo count)
+    for entry in table:
+        if rng.random() < entry["chance"]:
+            if entry["type"] == "gold":
+                total_gold += roll_dice(entry["dice"], rng)
+            elif entry["type"] == "item" and entry["name"] not in seen:
+                seen.add(entry["name"])
+                items.append({"name": entry["name"], "qty": 1})
     return {"gold": max(total_gold, 0), "items": items}
 
 
@@ -435,6 +497,15 @@ SPELLS = {
                              description="Hồi máu 1d4+3, bonus action."),
 }
 
+def _apply_hp_zero(actor):
+    """Helper: khi HP <= 0, set dying (party) hoặc dead (monster)."""
+    actor.hp = 0
+    if not getattr(actor, 'dying', False) and actor.team == "party":
+        actor.dying = True
+    else:
+        actor.alive = False
+
+
 def list_spells_for_class(char_class: str) -> list:
     """Trả list spell ID phù hợp class (cho LLM biết cast được gì)."""
     spell_lists = {
@@ -468,13 +539,13 @@ def cast_spell(spell_id: str, caster: Actor, target: Actor,
             if nat == 20:  # crit
                 dmg = roll_dice(s.damage, rng) * 2
                 tgt.hp -= dmg
-                if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+                if tgt.hp <= 0: _apply_hp_zero(tgt)
                 return {"target": tgt.name, "hit": True, "crit": True, "damage": dmg,
                         "hp_after": tgt.hp, "desc": "CRIT"}
             elif total >= tgt.ac:
                 dmg = roll_dice(s.damage, rng)
                 tgt.hp -= dmg
-                if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+                if tgt.hp <= 0: _apply_hp_zero(tgt)
                 return {"target": tgt.name, "hit": True, "crit": False, "damage": dmg,
                         "hp_after": tgt.hp, "desc": "hit"}
             else:
@@ -485,7 +556,7 @@ def cast_spell(spell_id: str, caster: Actor, target: Actor,
             # Auto-hit, no save
             dmg = roll_dice(s.damage, rng)
             tgt.hp -= dmg
-            if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+            if tgt.hp <= 0: _apply_hp_zero(tgt)
             return {"target": tgt.name, "hit": True, "damage": dmg,
                     "hp_after": tgt.hp, "desc": "auto-hit"}
 
@@ -504,7 +575,7 @@ def cast_spell(spell_id: str, caster: Actor, target: Actor,
             else:
                 desc = "no save"
             tgt.hp -= dmg
-            if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+            if tgt.hp <= 0: _apply_hp_zero(tgt)
             return {"target": tgt.name, "hit": True, "damage": dmg,
                     "hp_after": tgt.hp, "desc": desc}
 
@@ -517,6 +588,10 @@ def cast_spell(spell_id: str, caster: Actor, target: Actor,
         elif s.kind == "heal":
             heal = roll_dice(s.damage, rng)
             tgt.hp = min(tgt.hp + heal, tgt.max_hp)
+            if getattr(tgt, 'dying', False) and tgt.hp > 0:
+                tgt.dying = False
+                tgt.death_saves_success = 0
+                tgt.death_saves_fail = 0
             return {"target": tgt.name, "hit": True, "heal": heal,
                     "hp_after": tgt.hp, "desc": f"+{heal} HP"}
 
@@ -531,7 +606,7 @@ def cast_spell(spell_id: str, caster: Actor, target: Actor,
                     return {"target": tgt.name, "hit": False, "damage": 0,
                             "desc": f"save ({s.save}), no poison"}
             tgt.hp -= dmg
-            if tgt.hp <= 0: tgt.hp = 0; tgt.alive = False
+            if tgt.hp <= 0: _apply_hp_zero(tgt)
             # Thêm condition poison (simplified - giảm HP mỗi turn)
             if "poisoned" not in tgt.conditions:
                 tgt.conditions.append("poisoned")

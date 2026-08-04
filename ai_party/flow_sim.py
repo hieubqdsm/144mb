@@ -30,7 +30,8 @@ if sys.platform == "win32":
 from engine import (Actor, GameState, resolve_attack, d20, add_init,
                     roll_surprise, gen_loot, offer_loot_to_party,
                     chebyshev, distance_ft, in_melee_range, in_range, threatens,
-                    cast_spell, resolve_move, step_toward, SPELLS, list_spells_for_class)
+                    cast_spell, resolve_move, step_toward, SPELLS, list_spells_for_class,
+                    roll_death_save)
 from campaign import NODES, get_node, next_after_action, SceneNode
 from protocol import validate_action, make_action, parse_llm_json
 from agents import make_party, make_monsters, make_redbrands, make_skeletons, make_glasstaff
@@ -161,8 +162,14 @@ class MockDecisionMaker:
                                    args={"spell": "burning_hands"},
                                    say="Burning Hands! 🔥")
 
-        # Cleric (Bjorn): heal nếu ai HP thấp, else sacred_flame
+        # Cleric (Bjorn): ưu tiên cứu dying > heal HP thấp > sacred_flame
         if self.name == "Bjorn":
+            dying_allies = [a for a in state.actors if getattr(a, 'dying', False) and a.team == "party"]
+            if dying_allies:
+                patient = dying_allies[0]
+                return make_action("cast", target=patient.name,
+                                   args={"spell": "cure_wounds"},
+                                   say=f"Cứu {patient.name}!")
             hurt_allies = [a for a in state.actors if a.alive and a.team == "party" and a.hp < a.max_hp // 2]
             if hurt_allies:
                 patient = min(hurt_allies, key=lambda a: a.hp)
@@ -465,6 +472,21 @@ def run_combat(node: SceneNode, party: list, rng: random.Random,
             # Simplified: hiện khoảng cách từ party center
         for actor in list(state.actors):
             if not actor.alive or state.combat_over:
+                continue
+            # Dying actors: roll death save thay vì hành động
+            if getattr(actor, 'dying', False):
+                ds = roll_death_save(actor, rng)
+                ds_desc = ds.get('desc', '?')
+                ds_result = ds.get('result', '?')
+                if ds_result == 'dead':
+                    print(f"  {ca('💀', C_DEAD)} {cn(actor.name)} DEATH SAVE: {ds_desc}")
+                elif ds_result == 'stable':
+                    print(f"  {ca('✓', C_HEAL)} {cn(actor.name)} DEATH SAVE: {ds_desc}")
+                elif ds_result == 'revived':
+                    print(f"  {ca('✨', C_HEAL)} {cn(actor.name)} DEATH SAVE: {ds_desc}")
+                else:
+                    print(f"  {ca('⚠️', C_OPP)} {cn(actor.name)} death save: {ds_desc}")
+                pause()
                 continue
             # Skip nếu surprised ở round 1
             if state.round == 1 and actor.name in party_surprised:
